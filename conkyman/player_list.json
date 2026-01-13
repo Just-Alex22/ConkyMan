@@ -1,0 +1,69 @@
+{
+  "players": [
+    {
+      "name": "Spotify",
+      "process": "spotify",
+      "playerctl_name": "spotify"
+    },
+    {
+      "name": "Rhythmbox",
+      "process": "rhythmbox",
+      "playerctl_name": "rhythmbox"
+    },
+    {
+      "name": "VLC",
+      "process": "vlc",
+      "playerctl_name": "vlc"
+    },
+    {
+      "name": "Strawberry",
+      "process": "strawberry",
+      "playerctl_name": "strawberry"
+    },
+    {
+      "name": "Exaile",
+      "process": "exaile",
+      "playerctl_name": "exaile"
+    },
+    {
+      "name": "Parole",
+      "process": "parole",
+      "playerctl_name": "parole"
+    },
+    {
+      "name": "Elisa",
+      "process": "elisa",
+      "playerctl_name": "elisa"
+    },
+    {
+      "name": "Juk",
+      "process": "juk",
+      "playerctl_name": "juk"
+    },
+    {
+      "name": "Amarok",
+      "process": "amarok",
+      "playerctl_name": "amarok"
+    },
+    {
+      "name": "Clementine",
+      "process": "clementine",
+      "playerctl_name": "clementine"
+    },
+    {
+      "name": "Celluloid",
+      "process": "celluloid",
+      "playerctl_name": "celluloid"
+    },
+    {
+      "name": "GNOME Music",
+      "process": "gnome-music",
+      "playerctl_name": "gnome-music"
+    },
+    {
+      "name": "Lollypop",
+      "process": "lollypop",
+      "playerctl_name": "lollypop"
+    }
+  ]
+}
