@@ -1,5 +1,3 @@
-# puto el que lea xdxdxdxd
-
 import gi
 import os
 import re
@@ -297,8 +295,8 @@ class ConkymanApp(Gtk.Window):
         about = Gtk.AboutDialog(transient_for=self)
         about.set_program_name("ConkyMan")
         about.set_version("1.0")
-        about.set_copyright("🄯 2025 CuerdOS")
-        about.set_license_type(Gtk.License.GPL_3_0)
+        about.set_copyright("🄯 2026 CuerdOS")
+        about.set_license_type(Gtk.License.LGPL_3_0)
         about.set_website("https://github.com/cuerdos")
         about.set_website_label("Visitar Pagina Web")
         about.set_comments("Control de Yelena Conky.\nPersonaliza tu configuracion de Conky.")
