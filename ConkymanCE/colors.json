@@ -1,0 +1,32 @@
+{
+  "light": {
+    "Mentolado": "#27AE60",
+    "Verde MATE": "#87A556",
+    "Menta": "#4A7C59",
+    "Gato Verde": "#32CD32",
+    "Azul": "#2980B9",
+    "Rojo": "#C0392B",
+    "Naranja": "#D35400",
+    "Amarillo": "#F1C40F",
+    "Púrpura": "#8E44AD",
+    "Turquesa": "#16A085",
+    "Rosa": "#E91E63",
+    "Índigo": "#3F51B5",
+    "Ámbar": "#FF6F00"
+  },
+  "dark": {
+    "Mentolado": "#8AA34F",
+    "Verde MATE": "#9DB76F",
+    "Menta": "#6FD89D",
+    "Gato Verde": "#7FFF00",
+    "Azul": "#5DADE2",
+    "Rojo": "#E74C3C",
+    "Naranja": "#E67E22",
+    "Amarillo": "#F4D03F",
+    "Púrpura": "#BB8FCE",
+    "Turquesa": "#48C9B0",
+    "Rosa": "#F48FB1",
+    "Índigo": "#7986CB",
+    "Ámbar": "#FFB74D"
+  }
+}
