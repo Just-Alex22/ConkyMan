@@ -124,7 +124,7 @@ class ConkymanApp(Gtk.Window):
         headerbar = Gtk.HeaderBar()
         headerbar.set_show_close_button(True)
         headerbar.set_title("ConkyMan")
-        headerbar.set_subtitle("Configuración Total")
+        headerbar.set_subtitle("Control de Yelena Conky")
         self.set_titlebar(headerbar)
         
         btn_restart = Gtk.Button()
@@ -159,7 +159,7 @@ class ConkymanApp(Gtk.Window):
         stack_switcher.set_stack(stack)
         stack_switcher.set_halign(Gtk.Align.CENTER)
         headerbar.set_custom_title(stack_switcher)
-        
+
         vbox_style = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=15)
         self.apply_margins(vbox_style, 20)
         self.add_pro_section(vbox_style, "Ubicación", "preferences-desktop-display-symbolic", [
@@ -170,13 +170,42 @@ class ConkymanApp(Gtk.Window):
         self.add_pro_section(vbox_style, "Modo de Color", "weather-clear-night-symbolic", [
             ("Modo Dark", "mode_dark", True), ("Modo Light", "mode_light", False)
         ])
-        
-        self.colors_frame = Gtk.Frame()
-        self.colors_inner_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        self.apply_margins(self.colors_inner_box, 15)
-        vbox_style.pack_start(self.colors_frame, False, False, 0)
-        self.update_colors_section()
+
+        frame_fonts = Gtk.Frame()
+        inner_fonts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        self.apply_margins(inner_fonts, 15)
+        header_f = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=15)
+        header_f.pack_start(Gtk.Image.new_from_icon_name("preferences-desktop-font", Gtk.IconSize.DND), False, False, 0)
+        label_f = Gtk.Label(); label_f.set_markup("<b><span size='large'>Tipografía [Experimental]</span></b>")
+        header_f.pack_start(label_f, False, False, 0)
+        inner_fonts.pack_start(header_f, False, False, 0)
+        grid_f = Gtk.Grid(column_spacing=20, row_spacing=10)
+        grid_f.attach(Gtk.Label(label="Fuente Números:", xalign=0), 0, 0, 1, 1)
+        self.font_nums = Gtk.FontButton(); self.font_nums.set_font("Roboto 85")
+        grid_f.attach(self.font_nums, 1, 0, 1, 1)
+        grid_f.attach(Gtk.Label(label="Fuente Textos:", xalign=0), 0, 1, 1, 1)
+        self.font_txt = Gtk.FontButton(); self.font_txt.set_font("Roboto Condensed 14")
+        grid_f.attach(self.font_txt, 1, 1, 1, 1)
+        inner_fonts.pack_start(grid_f, False, False, 0)
+        frame_fonts.add(inner_fonts)
+        vbox_style.pack_start(frame_fonts, False, False, 0)
+
         stack.add_titled(vbox_style, "style", "Apariencia")
+
+        vbox_colors = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=15)
+        self.apply_margins(vbox_colors, 20)
+        self.colors_frame_c1 = Gtk.Frame()
+        self.colors_inner_c1 = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        self.apply_margins(self.colors_inner_c1, 15)
+        self.colors_frame_c1.add(self.colors_inner_c1)
+        vbox_colors.pack_start(self.colors_frame_c1, False, False, 0)
+        self.colors_frame_c2 = Gtk.Frame()
+        self.colors_inner_c2 = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        self.apply_margins(self.colors_inner_c2, 15)
+        self.colors_frame_c2.add(self.colors_inner_c2)
+        vbox_colors.pack_start(self.colors_frame_c2, False, False, 0)
+        self.update_colors_section()
+        stack.add_titled(vbox_colors, "colors", "Colores")
         
         vbox_sys = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=15)
         self.apply_margins(vbox_sys, 20)
@@ -203,7 +232,6 @@ class ConkymanApp(Gtk.Window):
         inner_box_mini.pack_start(hbox_mini, False, False, 0)
         frame_mini.add(inner_box_mini)
         vbox_sys.pack_start(frame_mini, False, False, 0)
-        
         stack.add_titled(vbox_sys, "system", "Sistema")
         
         vbox_main.pack_start(stack, True, True, 0)
@@ -249,24 +277,32 @@ class ConkymanApp(Gtk.Window):
         if radio.get_active(): self.update_colors_section()
 
     def update_colors_section(self):
-        for child in self.colors_inner_box.get_children(): self.colors_inner_box.remove(child)
-        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=15)
-        header.pack_start(Gtk.Image.new_from_icon_name("preferences-color", Gtk.IconSize.DND), False, False, 0)
-        label = Gtk.Label(); label.set_markup("<b><span size='large'>Colores de Acento</span></b>")
-        header.pack_start(label, False, False, 0); self.colors_inner_box.pack_start(header, False, False, 0)
-        mode = "dark" if self.mode_dark.get_active() else "light"
-        colors = self.colors_data[mode]; flow = Gtk.FlowBox(); flow.set_min_children_per_line(3); flow.set_selection_mode(Gtk.SelectionMode.NONE)
-        first_radio = None
-        for color_name, color_value in colors.items():
-            radio = Gtk.RadioButton.new_with_label_from_widget(first_radio, color_name)
-            if first_radio is None: first_radio = radio; radio.set_active(True)
-            setattr(self, f"col_{self.sanitize_attr_name(color_name)}", radio); flow.add(radio)
-        self.colors_inner_box.pack_start(flow, False, False, 5)
-        self.colors_inner_box.pack_start(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL), False, False, 5)
-        hbox_custom = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        self.radio_custom = Gtk.RadioButton.new_with_label_from_widget(first_radio, "Personalizado:")
-        self.btn_color_picker = Gtk.ColorButton(); hbox_custom.pack_start(self.radio_custom, False, False, 0); hbox_custom.pack_start(self.btn_color_picker, False, False, 0)
-        self.colors_inner_box.pack_start(hbox_custom, False, False, 5); self.colors_frame.add(self.colors_inner_box); self.colors_frame.show_all()
+        def populate_color_box(inner_box, title, prefix):
+            for child in inner_box.get_children(): inner_box.remove(child)
+            header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=15)
+            header.pack_start(Gtk.Image.new_from_icon_name("preferences-color", Gtk.IconSize.DND), False, False, 0)
+            label = Gtk.Label(); label.set_markup(f"<b><span size='large'>{title}</span></b>")
+            header.pack_start(label, False, False, 0); inner_box.pack_start(header, False, False, 0)
+            mode = "dark" if self.mode_dark.get_active() else "light"
+            colors = self.colors_data[mode]
+            flow = Gtk.FlowBox(); flow.set_min_children_per_line(4); flow.set_selection_mode(Gtk.SelectionMode.NONE)
+            first_radio = None
+            for color_name, color_value in colors.items():
+                radio = Gtk.RadioButton.new_with_label_from_widget(first_radio, color_name)
+                if first_radio is None: first_radio = radio; radio.set_active(True)
+                setattr(self, f"{prefix}_{self.sanitize_attr_name(color_name)}", radio); flow.add(radio)
+            inner_box.pack_start(flow, False, False, 5)
+            inner_box.pack_start(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL), False, False, 5)
+            hbox_custom = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+            radio_custom = Gtk.RadioButton.new_with_label_from_widget(first_radio, "Personalizado:")
+            setattr(self, f"{prefix}_radio_custom", radio_custom)
+            picker = Gtk.ColorButton()
+            setattr(self, f"{prefix}_color_picker", picker)
+            hbox_custom.pack_start(radio_custom, False, False, 0); hbox_custom.pack_start(picker, False, False, 0)
+            inner_box.pack_start(hbox_custom, False, False, 5); inner_box.show_all()
+
+        populate_color_box(self.colors_inner_c1, "Color Primario", "c1")
+        populate_color_box(self.colors_inner_c2, "Color de Acento", "c2")
 
     def detect_conky_path(self):
         home = os.path.expanduser("~")
@@ -314,6 +350,16 @@ class ConkymanApp(Gtk.Window):
         dialog.format_secondary_text("¿Deseas restaurar el archivo de configuración predeterminado (conky.lua)?")
         if dialog.run() == Gtk.ResponseType.YES:
             with open(self.conkyrc_path, 'w', encoding='utf-8') as f: f.write(DEFAULT_CONKY_LUA)
+            
+            self.pos_tr.set_active(True)
+            self.mode_dark.set_active(True)
+            self.font_nums.set_font("Roboto 85")
+            self.font_txt.set_font("Roboto Condensed 14")
+            self.time_24.set_active(True)
+            self.type_dock.set_active(True)
+            self.switch_minimal.set_active(False)
+            self.update_colors_section() 
+            
             self.restart_conky_process(None)
         dialog.destroy()
 
@@ -321,6 +367,12 @@ class ConkymanApp(Gtk.Window):
         try:
             content = MINIMAL_CONKY_LUA if self.switch_minimal.get_active() else DEFAULT_CONKY_LUA
             
+            f_nums_name = self.font_nums.get_font().rsplit(' ', 1)[0]
+            f_txt_name = self.font_txt.get_font().rsplit(' ', 1)[0]
+            
+            content = re.sub(r"\${font [^:]+:weight=[^:]+:size=8([05])}", fr"${{font {f_nums_name}:weight=Normal:size=8\1}}", content)
+            content = re.sub(r"\${font [^:]+:size=1([24])}", fr"${{font {f_txt_name}:size=1\1}}", content)
+
             if os.environ.get('XDG_SESSION_TYPE') == 'wayland':
                 content = content.replace("own_window_type = 'dock'", "own_window_type = 'desktop'")
                 content = content.replace("own_window_hints = 'undecorated,below,sticky,skip_taskbar,skip_pager'", "out_to_wayland = true")
@@ -328,22 +380,19 @@ class ConkymanApp(Gtk.Window):
             pos_map = {'pos_tr': "'top_right'", 'pos_tl': "'top_left'", 'pos_br': "'bottom_right'", 'pos_bl': "'bottom_left'", 'pos_cc': "'middle_middle'"}
             for attr, val in pos_map.items():
                 if getattr(self, attr).get_active(): content = re.sub(r"alignment\s*=\s*'.*?'", f"alignment = {val}", content)
-            
-            if self.mode_dark.get_active():
-                content = content.replace("'2C3E50'", "'F5F5F5'").replace("'34495E'", "'E0E0E0'")
-            else:
-                content = content.replace("'F5F5F5'", "'2C3E50'").replace("'E0E0E0'", "'34495E'")
-            
-            if self.radio_custom.get_active():
-                rgba = self.btn_color_picker.get_rgba()
-                c_hex = "{:02x}{:02x}{:02x}".format(int(rgba.red*255), int(rgba.green*255), int(rgba.blue*255)).upper()
-                content = re.sub(r"color2\s*=\s*'.*?'", f"color2 = '{c_hex}'", content)
-            else:
-                mode = "dark" if self.mode_dark.get_active() else "light"
-                for color_name in self.colors_data[mode]:
-                    if getattr(self, f"col_{self.sanitize_attr_name(color_name)}").get_active():
-                        val = self.colors_data[mode][color_name].replace('#', '')
-                        content = re.sub(r"color2\s*=\s*'.*?'", f"color2 = '{val}'", content); break
+
+            mode = "dark" if self.mode_dark.get_active() else "light"
+            for prefix, lua_key in [("c1", "color1"), ("c2", "color2")]:
+                selected_hex = ""
+                if getattr(self, f"{prefix}_radio_custom").get_active():
+                    rgba = getattr(self, f"{prefix}_color_picker").get_rgba()
+                    selected_hex = "{:02x}{:02x}{:02x}".format(int(rgba.red*255), int(rgba.green*255), int(rgba.blue*255)).upper()
+                else:
+                    for color_name in self.colors_data[mode]:
+                        if getattr(self, f"{prefix}_{self.sanitize_attr_name(color_name)}").get_active():
+                            selected_hex = self.colors_data[mode][color_name].replace('#', '')
+                            break
+                content = re.sub(f"{lua_key}\\s*=\\s*'.*?'", f"{lua_key} = '{selected_hex}'", content)
             
             if self.time_12.get_active():
                 content = content.replace("%H", "%I %p")
