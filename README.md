@@ -1,37 +1,53 @@
 # ConkyMan For CuerdOS
 
-ConkyMan is a powerful customization tool designed to manage Conky's aesthetics and functionality through a modern GTK3 graphical interface. Its goal is to simplify Linux desktop configuration, allowing users to adjust positions, switch between light and dark modes, and choose accent colors without manually editing code.
+<p align="center">
+  <img src="Logos/conkyman.svg" alt="ConkyMan Logo" width="150"/>
+</p>
+
+![ConkyMan running on CuerdOS 2.0 Skycatcher with Cinnamon](Screenshots/screenshot.png)
+
+## What is ConkyMan?
+
+**ConkyMan** is a powerful customization tool designed to manage **Conky**'s aesthetics and functionality through a modern **GTK3** graphical interface. Its goal is to simplify Linux desktop configuration, allowing users to adjust positions, switch between light and dark modes, and choose accent colors without manually editing code.
+
+## Characteristics
+
+- **User-friendly graphical interface**
+- **Broad compatibility with any modern GNU/Linux distribution**
+- **Fast and lightweight**
 
 ## How does it work?
 
-It works by searching for specific values in `conky.lua` and modifying them without touching the rest of the code. ConkyMan also comes with a pre-built text editor for experienced users who don't want to search for the specific `.conkyrc` or `conky.config` files.
+It works by searching for specific values in `conky.lua` and modifying them without touching the rest of the code. **ConkyMan** also comes with a pre-built text editor for 
+experienced users who don't want to search for the specific `.conkyrc` or `conky.config` files.
 
 ## What version should I choose?
-ConkyMan works better with Xfce and Gnome desktop environments; ConkyManCE offers better compatibility with desktop environments like KDE Plasma. 
-Mate, Lxde, etc. ConkyManCE also adds addons, which are features not offered in the standard Yelena Conky.
+**ConkyMan** works better with Xfce and Gnome desktop environments; **ConkyManCE** offers better compatibility with desktop environments like **Mate** and **LXQT** **ConkyManCE** also adds addons, which are features not offered in the standard **Yelena Conky**.
 
+## Requirements
+- **Python3.x**
+- **Conky**
+- **GTK 3**
+- **PyGObject**
 
-## Commonly asked questions
+## Instalation
+Clone the repository and run the app:
 
-### Does it work with any GNU/Linux distribution?
-Yes, but it will only load and modify the CuerdOS configuration file for Conky.
+```bash
+git clone https://github.com/Just-Alex22/ConkyMan.git
+cd ConkyMan
+python3 conkyman.py
+```
 
-### Why doesn't it load when I click "Apply Changes"?
-Make sure you have Conky installed in your system. Otherwise, click the refresh button on the headerbar and check if that works.
+## Contributing
+If you want to collaborate with the development of **ConkyMan**, follow us on github send your **Pull Requests** and **Issues** through the repository
 
-### I broke the Conky configuration file. What should I do?
-Click the "restore defaults" button on the headerbar; this will load the default Conky configuration file.
+## Licence
+This program comes with the GNU LGPLv3 licence, consult https://www.gnu.org/licenses/lgpl-3.0.html for more information.
 
-## Copyright
+---
 
-@2026 CuerdOS Dev Team, This program comes with the GNU LGPLv3 licence, consult https://www.gnu.org/licenses/lgpl-3.0.html for more 
-information.
-
-## Screenshot
-
-![ConkyMan running on CuerdOS 2.0 Skycatcher with Cinnamon](screenshot.png)
-
-## Screenshot for ConkyManCE
-
-![ConkyManCE running on CuerdOS 2.0 Skycatcher with Cinnamon](screenshotCE.png)
+> **Backend:** [Just_Alex](https://github.com/Just-Alex22)
+> **Frontend:** [GatoVerde95](https://github.com/gatoverde95)
+> **Repository:** [ConkyMan](https://github.com/Just-Alex22/ConkyMan)
 
