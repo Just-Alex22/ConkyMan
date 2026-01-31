@@ -333,7 +333,7 @@ class ConkymanApp(Gtk.Window):
         about.set_version("1.0")
         about.set_copyright("🄯 2026 CuerdOS")
         about.set_license_type(Gtk.License.LGPL_3_0)
-        about.set_website("https://github.com/cuerdos")
+        about.set_website("https://cuerdos.github.io")
         about.set_website_label("Visitar Pagina Web")
         about.set_comments("Control de Yelena Conky.\nPersonaliza tu configuracion de Conky.")
         if os.path.exists(self.logo_path):
