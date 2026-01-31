@@ -18,7 +18,7 @@
 
 ## How does it work?
 
-It works by searching for specific values in `conky.lua` and modifying them without touching the rest of the code. **ConkyMan** also comes with a pre-built text editor for 
+It works by searching for specific values in `conky.lua` and modifying them without touching the rest of the code. **ConkyMan** also comes with a built-in text editor for 
 experienced users who don't want to search for the specific `.conkyrc` or `conky.config` files.
 
 ## What version should I choose?
