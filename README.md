@@ -40,10 +40,10 @@ python3 conkyman.py
 ```
 
 ## Contributing
-If you want to collaborate with the development of **ConkyMan**, follow us on github send your **Pull Requests** and **Issues** through the repository
+If you want to collaborate with the development of **ConkyMan**, follow us on ShitHub send your **Pull Requests** and **Issues** through the repository
 
 ## Licence
-This program comes with the GNU LGPLv3 licence, consult https://www.gnu.org/licenses/lgpl-3.0.html for more information.
+This program comes with the GNU GPLv3 licence, consult https://www.gnu.org/licenses/gpl-3.0.en.html for more information.
 
 ---
 
