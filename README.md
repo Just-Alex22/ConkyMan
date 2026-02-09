@@ -22,7 +22,7 @@ It works by searching for specific values in `conky.lua` and modifying them with
 experienced users who don't want to search for the specific `.conkyrc` or `conky.config` files.
 
 ## What version should I choose?
-**ConkyMan** works better with Xfce and Gnome desktop environments; **ConkyManRC** offers better compatibility with desktop environments like **Mate** and **LXQT** **ConkyManRC** also adds addons, which are features not offered in the standard **Yelena Conky**.
+**ConkyMan** works better with Xfce and Gnome desktop environments; **ConkyManRC** offers better compatibility with desktop environments like **Mate** and **LXQT**. **ConkyManRC** also adds addons, which are features not offered in the standard **Yelena Conky**.
 
 ## Requirements
 - **Python3.x**
@@ -40,7 +40,7 @@ python3 conkyman.py
 ```
 
 ## Contributing
-If you want to collaborate with the development of **ConkyMan**, follow us on ShitHub send your **Pull Requests** and **Issues** through the repository
+If you want to collaborate with the development of **ConkyMan**, follow us on GitHub send your **Pull Requests** and **Issues** through the repository
 
 ## Licence
 This program comes with the GNU GPLv3 licence, consult https://www.gnu.org/licenses/gpl-3.0.en.html for more information.
