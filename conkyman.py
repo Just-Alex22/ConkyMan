@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import gi
 import os
 import re
@@ -330,9 +332,9 @@ class ConkymanApp(Gtk.Window):
     def show_about(self, btn):
         about = Gtk.AboutDialog(transient_for=self)
         about.set_program_name("ConkyMan")
-        about.set_version("1.0")
+        about.set_version("1.0-1")
         about.set_copyright("🄯 2026 CuerdOS")
-        about.set_license_type(Gtk.License.LGPL_3_0)
+        about.set_license_type(Gtk.License.GPL_3_0)
         about.set_website("https://cuerdos.github.io")
         about.set_website_label("Visitar Pagina Web")
         about.set_comments("Control de Yelena Conky.\nPersonaliza tu configuracion de Conky.")
@@ -364,46 +366,56 @@ class ConkymanApp(Gtk.Window):
         dialog.destroy()
 
     def apply_logic(self):
-        try:
-            content = MINIMAL_CONKY_LUA if self.switch_minimal.get_active() else DEFAULT_CONKY_LUA
+            try:
+                content = MINIMAL_CONKY_LUA if self.switch_minimal.get_active() else DEFAULT_CONKY_LUA
             
-            f_nums_name = self.font_nums.get_font().rsplit(' ', 1)[0]
-            f_txt_name = self.font_txt.get_font().rsplit(' ', 1)[0]
+                is_dark = self.mode_dark.get_active()
+                base_color = "F5F5F5" if is_dark else "2C3E50"
+                graph_color = "5B8080" # 
             
-            content = re.sub(r"\${font [^:]+:weight=[^:]+:size=8([05])}", fr"${{font {f_nums_name}:weight=Normal:size=8\1}}", content)
-            content = re.sub(r"\${font [^:]+:size=1([24])}", fr"${{font {f_txt_name}:size=1\1}}", content)
+                content = re.sub(r"default_color\s*=\s*'.*?'", f"default_color = '{base_color}'", content)
+            
+                f_nums_name = self.font_nums.get_font().rsplit(' ', 1)[0]
+                f_txt_name = self.font_txt.get_font().rsplit(' ', 1)[0]
+            
+                content = re.sub(r"\${font [^:]+:weight=[^:]+:size=8([05])}", fr"${{font {f_nums_name}:weight=Normal:size=8\1}}", content)
+                content = re.sub(r"\${font [^:]+:size=1([24])}", fr"${{font {f_txt_name}:size=1\1}}", content)
 
-            if os.environ.get('XDG_SESSION_TYPE') == 'wayland':
-                content = content.replace("own_window_type = 'dock'", "own_window_type = 'desktop'")
-                content = content.replace("own_window_hints = 'undecorated,below,sticky,skip_taskbar,skip_pager'", "out_to_wayland = true")
+                if os.environ.get('XDG_SESSION_TYPE') == 'wayland':
+                    content = content.replace("own_window_type = 'dock'", "own_window_type = 'desktop'")
+                    content = content.replace("own_window_hints = 'undecorated,below,sticky,skip_taskbar,skip_pager'", "out_to_wayland = true")
             
-            pos_map = {'pos_tr': "'top_right'", 'pos_tl': "'top_left'", 'pos_br': "'bottom_right'", 'pos_bl': "'bottom_left'", 'pos_cc': "'middle_middle'"}
-            for attr, val in pos_map.items():
-                if getattr(self, attr).get_active(): content = re.sub(r"alignment\s*=\s*'.*?'", f"alignment = {val}", content)
+                pos_map = {'pos_tr': "'top_right'", 'pos_tl': "'top_left'", 'pos_br': "'bottom_right'", 'pos_bl': "'bottom_left'", 'pos_cc': "'middle_middle'"}
+                for attr, val in pos_map.items():
+                    if getattr(self, attr).get_active(): content = re.sub(r"alignment\s*=\s*'.*?'", f"alignment = {val}", content)
+                mode = "dark" if is_dark else "light"
+                accent_color = "" 
+            
+                for prefix, lua_key in [("c1", "color1"), ("c2", "color2")]:
+                    selected_hex = ""
+                    if getattr(self, f"{prefix}_radio_custom").get_active():
+                        rgba = getattr(self, f"{prefix}_color_picker").get_rgba()
+                        selected_hex = "{:02x}{:02x}{:02x}".format(int(rgba.red*255), int(rgba.green*255), int(rgba.blue*255)).upper()
+                    else:
+                        for color_name in self.colors_data[mode]:
+                            if getattr(self, f"{prefix}_{self.sanitize_attr_name(color_name)}").get_active():
+                                selected_hex = self.colors_data[mode][color_name].replace('#', '')
+                                break
+                    content = re.sub(f"{lua_key}\\s*=\\s*'.*?'", f"{lua_key} = '{selected_hex}'", content)
+                    if lua_key == "color2": accent_color = selected_hex
 
-            mode = "dark" if self.mode_dark.get_active() else "light"
-            for prefix, lua_key in [("c1", "color1"), ("c2", "color2")]:
-                selected_hex = ""
-                if getattr(self, f"{prefix}_radio_custom").get_active():
-                    rgba = getattr(self, f"{prefix}_color_picker").get_rgba()
-                    selected_hex = "{:02x}{:02x}{:02x}".format(int(rgba.red*255), int(rgba.green*255), int(rgba.blue*255)).upper()
+                content = re.sub(r"graph 10,20 [0-9A-F]+ [0-9A-F]+", f"graph 10,20 {graph_color} {accent_color}", content)
+            
+                if self.time_12.get_active():
+                    content = content.replace("%H", "%I %p")
                 else:
-                    for color_name in self.colors_data[mode]:
-                        if getattr(self, f"{prefix}_{self.sanitize_attr_name(color_name)}").get_active():
-                            selected_hex = self.colors_data[mode][color_name].replace('#', '')
-                            break
-                content = re.sub(f"{lua_key}\\s*=\\s*'.*?'", f"{lua_key} = '{selected_hex}'", content)
-            
-            if self.time_12.get_active():
-                content = content.replace("%H", "%I %p")
-            else:
-                content = content.replace("%I %p", "%H").replace("%I", "%H")
+                    content = content.replace("%I %p", "%H").replace("%I", "%H")
 
-            with open(self.conkyrc_path, 'w', encoding='utf-8') as f: f.write(content)
-            self.save_config()
-            os.system("killall -SIGUSR1 conky 2>/dev/null")
-            return True, "Cambios aplicados con éxito."
-        except Exception as e: return False, str(e)
+                with open(self.conkyrc_path, 'w', encoding='utf-8') as f: f.write(content)
+                self.save_config()
+                os.system("killall -SIGUSR1 conky 2>/dev/null")
+                return True, "Cambios aplicados con éxito."
+            except Exception as e: return False, str(e)
 
     def start_process(self, btn):
         self.btn_run.set_sensitive(False)
