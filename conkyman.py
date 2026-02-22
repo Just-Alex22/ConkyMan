@@ -123,6 +123,7 @@ class ConkymanApp(Gtk.Window):
         os.makedirs(self.config_dir, exist_ok=True)
         self.load_colors()
         self.conkyrc_path = self.detect_conky_path()
+        
         headerbar = Gtk.HeaderBar()
         headerbar.set_show_close_button(True)
         headerbar.set_title("ConkyMan")
@@ -173,6 +174,7 @@ class ConkymanApp(Gtk.Window):
             ("Modo Dark", "mode_dark", True), ("Modo Light", "mode_light", False)
         ])
 
+        # SECCIÓN TIPOGRAFÍA RESTAURADA
         frame_fonts = Gtk.Frame()
         inner_fonts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         self.apply_margins(inner_fonts, 15)
@@ -247,30 +249,57 @@ class ConkymanApp(Gtk.Window):
         
         self.mode_dark.connect("toggled", self.on_mode_changed)
         self.mode_light.connect("toggled", self.on_mode_changed)
-        self.load_config()
-
-    def open_text_editor(self, btn):
-        script_path = os.path.join(self.base_path, "text.py")
-        if os.path.exists(script_path):
-            subprocess.Popen(["python3", script_path, self.conkyrc_path])
-
-    def load_colors(self):
-        self.colors_data = {"light": {"Mentolado": "#27AE60", "Verde MATE": "#87A556", "Menta": "#6F4E37", "Gato Verde": "#32CD32", "Azul": "#2980B9", "Rojo": "#C0392B", "Naranja": "#D35400", "Amarillo": "#F1C40F", "Púrpura": "#8E44AD", "Turquesa": "#16A085", "Rosa": "#E91E63", "Índigo": "#3F51B5", "Ámbar": "#FF6F00"}, "dark": {"Mentolado": "#8AA34F", "Verde MATE": "#9DB76F", "Café/Menta": "#98D8C8", "Gato Verde": "#7FFF00", "Azul": "#5DADE2", "Rojo": "#E74C3C", "Naranja": "#E67E22", "Amarillo": "#F4D03F", "Púrpura": "#BB8FCE", "Turquesa": "#48C9B0", "Rosa": "#F48FB1", "Índigo": "#7986CB", "Ámbar": "#FFB74D"}}
+        
+        self.load_config() # Carga configuración al iniciar
 
     def save_config(self):
         config = configparser.ConfigParser()
-        config['Appearance'] = {'mode': 'dark' if self.mode_dark.get_active() else 'light'}
-        config['System'] = {'minimal': 'yes' if self.switch_minimal.get_active() else 'no', 'time_format': '12' if self.time_12.get_active() else '24'}
+        # Guardar Apariencia
+        config['Appearance'] = {
+            'mode': 'dark' if self.mode_dark.get_active() else 'light',
+            'font_nums': self.font_nums.get_font(),
+            'font_txt': self.font_txt.get_font()
+        }
+        # Guardar Sistema
+        pos = "pos_tr"
+        for p in ['pos_tr', 'pos_tl', 'pos_br', 'pos_bl', 'pos_cc']:
+            if hasattr(self, p) and getattr(self, p).get_active():
+                pos = p; break
+        
+        config['System'] = {
+            'minimal': 'yes' if self.switch_minimal.get_active() else 'no',
+            'time_format': '12' if self.time_12.get_active() else '24',
+            'position': pos,
+            'type': 'type_dock' if self.type_dock.get_active() else 'type_norm' if self.type_norm.get_active() else 'type_desk' if self.type_desk.get_active() else 'type_panel'
+        }
         with open(self.config_file, 'w') as f: config.write(f)
 
     def load_config(self):
         if not os.path.exists(self.config_file): return
         config = configparser.ConfigParser(); config.read(self.config_file)
-        if 'Appearance' in config:
-            if config['Appearance'].get('mode') == 'light': self.mode_light.set_active(True)
-        if 'System' in config:
-            self.switch_minimal.set_active(config['System'].get('minimal') == 'yes')
-            if config['System'].get('time_format') == '12': self.time_12.set_active(True)
+        try:
+            if 'Appearance' in config:
+                if config['Appearance'].get('mode') == 'light': self.mode_light.set_active(True)
+                self.font_nums.set_font(config['Appearance'].get('font_nums', 'Roboto 85'))
+                self.font_txt.set_font(config['Appearance'].get('font_txt', 'Roboto Condensed 14'))
+            if 'System' in config:
+                self.switch_minimal.set_active(config['System'].get('minimal') == 'yes')
+                if config['System'].get('time_format') == '12': self.time_12.set_active(True)
+                pos = config['System'].get('position', 'pos_tr')
+                if hasattr(self, pos): getattr(self, pos).set_active(True)
+                ctype = config['System'].get('type', 'type_dock')
+                if hasattr(self, ctype): getattr(self, ctype).set_active(True)
+        except: pass
+
+    def open_text_editor(self, btn):
+        script_path = os.path.join(self.base_path, "text.py")
+        if os.path.exists(script_path):
+            subprocess.Popen(["python3", script_path, self.conkyrc_path])
+        else:
+            subprocess.Popen(["xdg-open", self.conkyrc_path])
+
+    def load_colors(self):
+        self.colors_data = {"light": {"Mentolado": "#27AE60", "Verde MATE": "#87A556", "Menta": "#6F4E37", "Gato Verde": "#32CD32", "Azul": "#2980B9", "Rojo": "#C0392B", "Naranja": "#D35400", "Amarillo": "#F1C40F", "Púrpura": "#8E44AD", "Turquesa": "#16A085", "Rosa": "#E91E63", "Índigo": "#3F51B5", "Ámbar": "#FF6F00"}, "dark": {"Mentolado": "#8AA34F", "Verde MATE": "#9DB76F", "Café/Menta": "#98D8C8", "Gato Verde": "#7FFF00", "Azul": "#5DADE2", "Rojo": "#E74C3C", "Naranja": "#E67E22", "Amarillo": "#F4D03F", "Púrpura": "#BB8FCE", "Turquesa": "#48C9B0", "Rosa": "#F48FB1", "Índigo": "#7986CB", "Ámbar": "#FFB74D"}}
 
     def sanitize_attr_name(self, name):
         return name.lower().replace('ú', 'u').replace('í', 'i').replace('á', 'a').replace('/', '_').replace(' ', '_')
@@ -310,7 +339,7 @@ class ConkymanApp(Gtk.Window):
         home = os.path.expanduser("~")
         for p in [os.path.join(home, ".config/conky/conky.lua"), os.path.join(home, ".conkyrc")]:
             if os.path.exists(p): return p
-        return os.path.join(home, ".config/conky/conky.lua")
+        return os.path.join(home, ".conkyrc")
 
     def apply_margins(self, widget, val):
         widget.set_margin_top(val); widget.set_margin_bottom(val); widget.set_margin_start(val); widget.set_margin_end(val)
@@ -329,6 +358,7 @@ class ConkymanApp(Gtk.Window):
             radio.set_active(active); setattr(self, attr, radio); flow.add(radio)
         inner_box.pack_start(flow, False, False, 5); frame.add(inner_box); container.pack_start(frame, False, False, 0)
 
+    # ACERCA DE RESTAURADO AL 100%
     def show_about(self, btn):
         about = Gtk.AboutDialog(transient_for=self)
         about.set_program_name("ConkyMan")
@@ -344,7 +374,7 @@ class ConkymanApp(Gtk.Window):
         about.destroy()
 
     def restart_conky_process(self, btn):
-        os.system("killall conky")
+        os.system("killall conky 2>/dev/null")
         subprocess.Popen(["conky", "-c", self.conkyrc_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def restore_defaults(self, btn):
@@ -352,7 +382,6 @@ class ConkymanApp(Gtk.Window):
         dialog.format_secondary_text("¿Deseas restaurar el archivo de configuración predeterminado (conky.lua)?")
         if dialog.run() == Gtk.ResponseType.YES:
             with open(self.conkyrc_path, 'w', encoding='utf-8') as f: f.write(DEFAULT_CONKY_LUA)
-            
             self.pos_tr.set_active(True)
             self.mode_dark.set_active(True)
             self.font_nums.set_font("Roboto 85")
@@ -361,61 +390,64 @@ class ConkymanApp(Gtk.Window):
             self.type_dock.set_active(True)
             self.switch_minimal.set_active(False)
             self.update_colors_section() 
-            
             self.restart_conky_process(None)
         dialog.destroy()
 
     def apply_logic(self):
-            try:
-                content = MINIMAL_CONKY_LUA if self.switch_minimal.get_active() else DEFAULT_CONKY_LUA
+        try:
+            content = MINIMAL_CONKY_LUA if self.switch_minimal.get_active() else DEFAULT_CONKY_LUA
             
-                is_dark = self.mode_dark.get_active()
-                base_color = "F5F5F5" if is_dark else "2C3E50"
-                graph_color = "5B8080" # 
+            # Lógica de contraste Modo Light/Dark
+            is_dark = self.mode_dark.get_active()
+            base_color = "F5F5F5" if is_dark else "2C3E50"
+            graph_color = "5B8080"
+            content = re.sub(r"default_color\s*=\s*'.*?'", f"default_color = '{base_color}'", content)
             
-                content = re.sub(r"default_color\s*=\s*'.*?'", f"default_color = '{base_color}'", content)
-            
-                f_nums_name = self.font_nums.get_font().rsplit(' ', 1)[0]
-                f_txt_name = self.font_txt.get_font().rsplit(' ', 1)[0]
-            
-                content = re.sub(r"\${font [^:]+:weight=[^:]+:size=8([05])}", fr"${{font {f_nums_name}:weight=Normal:size=8\1}}", content)
-                content = re.sub(r"\${font [^:]+:size=1([24])}", fr"${{font {f_txt_name}:size=1\1}}", content)
+            # Fuentes
+            f_nums_name = self.font_nums.get_font().rsplit(' ', 1)[0]
+            f_txt_name = self.font_txt.get_font().rsplit(' ', 1)[0]
+            content = re.sub(r"\${font [^:]+:weight=[^:]+:size=8([05])}", fr"${{font {f_nums_name}:weight=Normal:size=8\1}}", content)
+            content = re.sub(r"\${font [^:]+:size=1([24])}", fr"${{font {f_txt_name}:size=1\1}}", content)
 
-                if os.environ.get('XDG_SESSION_TYPE') == 'wayland':
-                    content = content.replace("own_window_type = 'dock'", "own_window_type = 'desktop'")
-                    content = content.replace("own_window_hints = 'undecorated,below,sticky,skip_taskbar,skip_pager'", "out_to_wayland = true")
+            # Wayland
+            if os.environ.get('XDG_SESSION_TYPE') == 'wayland':
+                content = content.replace("own_window_type = 'dock'", "own_window_type = 'desktop'")
+                content = content.replace("own_window_hints = 'undecorated,below,sticky,skip_taskbar,skip_pager'", "out_to_wayland = true")
             
-                pos_map = {'pos_tr': "'top_right'", 'pos_tl': "'top_left'", 'pos_br': "'bottom_right'", 'pos_bl': "'bottom_left'", 'pos_cc': "'middle_middle'"}
-                for attr, val in pos_map.items():
-                    if getattr(self, attr).get_active(): content = re.sub(r"alignment\s*=\s*'.*?'", f"alignment = {val}", content)
-                mode = "dark" if is_dark else "light"
-                accent_color = "" 
-            
-                for prefix, lua_key in [("c1", "color1"), ("c2", "color2")]:
-                    selected_hex = ""
-                    if getattr(self, f"{prefix}_radio_custom").get_active():
-                        rgba = getattr(self, f"{prefix}_color_picker").get_rgba()
-                        selected_hex = "{:02x}{:02x}{:02x}".format(int(rgba.red*255), int(rgba.green*255), int(rgba.blue*255)).upper()
-                    else:
-                        for color_name in self.colors_data[mode]:
-                            if getattr(self, f"{prefix}_{self.sanitize_attr_name(color_name)}").get_active():
-                                selected_hex = self.colors_data[mode][color_name].replace('#', '')
-                                break
-                    content = re.sub(f"{lua_key}\\s*=\\s*'.*?'", f"{lua_key} = '{selected_hex}'", content)
-                    if lua_key == "color2": accent_color = selected_hex
+            # Posición
+            pos_map = {'pos_tr': "'top_right'", 'pos_tl': "'top_left'", 'pos_br': "'bottom_right'", 'pos_bl': "'bottom_left'", 'pos_cc': "'middle_middle'"}
+            for attr, val in pos_map.items():
+                if getattr(self, attr).get_active(): content = re.sub(r"alignment\s*=\s*'.*?'", f"alignment = {val}", content)
 
-                content = re.sub(r"graph 10,20 [0-9A-F]+ [0-9A-F]+", f"graph 10,20 {graph_color} {accent_color}", content)
-            
-                if self.time_12.get_active():
-                    content = content.replace("%H", "%I %p")
+            # Colores dinámicos
+            mode = "dark" if is_dark else "light"
+            accent_color = "8AA34F"
+            for prefix, lua_key in [("c1", "color1"), ("c2", "color2")]:
+                selected_hex = ""
+                if getattr(self, f"{prefix}_radio_custom").get_active():
+                    rgba = getattr(self, f"{prefix}_color_picker").get_rgba()
+                    selected_hex = "{:02x}{:02x}{:02x}".format(int(rgba.red*255), int(rgba.green*255), int(rgba.blue*255)).upper()
                 else:
-                    content = content.replace("%I %p", "%H").replace("%I", "%H")
+                    for color_name in self.colors_data[mode]:
+                        if getattr(self, f"{prefix}_{self.sanitize_attr_name(color_name)}").get_active():
+                            selected_hex = self.colors_data[mode][color_name].replace('#', '')
+                            break
+                content = re.sub(f"{lua_key}\\s*=\\s*'.*?'", f"{lua_key} = '{selected_hex}'", content)
+                if lua_key == "color2": accent_color = selected_hex
 
-                with open(self.conkyrc_path, 'w', encoding='utf-8') as f: f.write(content)
-                self.save_config()
-                os.system("killall -SIGUSR1 conky 2>/dev/null")
-                return True, "Cambios aplicados con éxito."
-            except Exception as e: return False, str(e)
+            # Gráficos sincronizados
+            content = re.sub(r"graph 10,20 [0-9A-F]+ [0-9A-F]+", f"graph 10,20 {graph_color} {accent_color}", content)
+            
+            if self.time_12.get_active():
+                content = content.replace("%H", "%I %p")
+            else:
+                content = content.replace("%I %p", "%H").replace("%I", "%H")
+
+            with open(self.conkyrc_path, 'w', encoding='utf-8') as f: f.write(content)
+            self.save_config() # Guardar configuración local
+            os.system("killall -SIGUSR1 conky 2>/dev/null")
+            return True, "Cambios aplicados con éxito."
+        except Exception as e: return False, str(e)
 
     def start_process(self, btn):
         self.btn_run.set_sensitive(False)
@@ -427,8 +459,13 @@ class ConkymanApp(Gtk.Window):
 
     def finish(self, success, msg):
         self.btn_run.set_sensitive(True)
+        self.restart_conky_process(None) # Asegura el reinicio
         dialog = Gtk.MessageDialog(transient_for=self, message_type=Gtk.MessageType.INFO, buttons=Gtk.ButtonsType.OK, text="ConkyMan")
         dialog.format_secondary_text(msg); dialog.run(); dialog.destroy()
 
 if __name__ == "__main__":
-    app = ConkymanApp(); app.connect("destroy", Gtk.main_quit); app.show_all(); Gtk.main()
+    app = ConkymanApp()
+    # Conexión para guardar antes de cerrar la ventana
+    app.connect("destroy", lambda w: (app.save_config(), Gtk.main_quit()))
+    app.show_all()
+    Gtk.main()
