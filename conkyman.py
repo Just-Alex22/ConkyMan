@@ -12,7 +12,7 @@ if os.environ.get('XDG_SESSION_TYPE') == 'wayland':
     os.environ['GDK_BACKEND'] = 'wayland,x11'
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, GLib, Gdk, GdkPixbuf
+from gi.repository import Gtk, GLib, Gdk, GdkPixbuf, Gio
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 try:
@@ -651,7 +651,7 @@ class ConkymanApp(Gtk.Window):
     def show_about(self, btn):
         about = Gtk.AboutDialog(transient_for=self)
         about.set_program_name("ConkyMan")
-        about.set_version("1.2")
+        about.set_version("1.3-rc1")
         about.set_copyright("🄯 2026 CuerdOS")
         about.set_license_type(Gtk.License.GPL_3_0)
         about.set_website("https://cuerdos.github.io")
@@ -924,8 +924,66 @@ class ConkymanApp(Gtk.Window):
             traceback.print_exc()
 
 
+class ConkymanApplication(Gtk.Application):
+    """
+    Gtk.Application wrapper para compatibilidad con Waybar y otros paneles Wayland.
+    El application_id 'conkyman' se convierte en el app_id de Wayland (xdg_toplevel),
+    permitiendo que Waybar muestre el icono correctamente mediante:
+        [wlr/taskbar]
+        app-id-whitelist = ["conkyman"]
+    o en reglas de estilo CSS:
+        #taskbar button.conkyman { ... }
+    """
+
+    def __init__(self):
+        super().__init__(
+            application_id="conkyman",
+            flags=Gio.ApplicationFlags.NON_UNIQUE,
+        )
+        self._window = None
+
+    def do_startup(self):
+        Gtk.Application.do_startup(self)
+        GLib.set_prgname("conkyman")
+        GLib.set_application_name("Conkyman")
+
+    def do_activate(self):
+        win = ConkymanApp()
+        # Asociar la ventana a esta GtkApplication:
+        # → GTK establece xdg_toplevel.set_app_id("conkyman")
+        # → Waybar y otros paneles Wayland leerán app_id = "conkyman"
+        win.set_application(self)
+        win.connect("destroy", self._on_window_destroy)
+        win.show_all()
+        GLib.idle_add(self._set_appid_after_realize, win)
+        self._window = win
+
+    def _on_window_destroy(self, win):
+        try:
+            win._save_config()
+        except Exception:
+            pass
+        self._window = None
+        self.quit()
+
+    @staticmethod
+    def _set_appid_after_realize(win):
+        try:
+            gdk_win = win.get_window()
+            if gdk_win:
+                gdk_win.set_icon_name("conkyman")
+                if hasattr(gdk_win, "set_utf8_property"):
+                    try:
+                        gdk_win.set_utf8_property("_NET_WM_ICON_NAME", "conkyman")
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f"[ICON] Post-realize setup: {e}")
+        return False
+
+
 if __name__ == "__main__":
-    app = ConkymanApp()
-    app.connect("destroy", lambda w: (app._save_config(), Gtk.main_quit()))
-    app.show_all()
-    Gtk.main()
+    GLib.set_prgname("conkyman")
+    GLib.set_application_name("Conkyman")
+    app = ConkymanApplication()
+    sys.exit(app.run(sys.argv))
