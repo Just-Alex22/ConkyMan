@@ -7,21 +7,6 @@ Pestañas: Apariencia, Colores, Sistema, Ajustes, Perfiles, Estado, Herramientas
 import os, re, subprocess, configparser, sys, shutil, json, signal
 from datetime import datetime
 
-<<<<<<< HEAD
-import gi
-import os
-import re
-import subprocess
-import threading
-import configparser
-import sys
-
-if os.environ.get('XDG_SESSION_TYPE') == 'wayland':
-    os.environ['GDK_BACKEND'] = 'wayland,x11'
-
-gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, GLib, Gdk, GdkPixbuf, Gio
-=======
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QStackedWidget, QPushButton, QLabel, QRadioButton, QButtonGroup,
@@ -32,7 +17,6 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui  import QIcon, QColor, QFont, QPixmap, QDesktopServices
 from PySide6.QtCore import Qt, QThread, Signal, QObject, QSize, QUrl, QTimer
->>>>>>> 6ed4f64 (Update: update conkyman core files)
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from translations import Translator, set_language as set_global_lang
@@ -1240,21 +1224,6 @@ class ConkymanApp(QMainWindow):
         lay.setContentsMargins(30, 30, 30, 30) # Aumentamos margen inferior al no haber botones
         lay.setSpacing(12)
 
-<<<<<<< HEAD
-    # ══════════════════════════════════════════════════════════════
-    # ACCIONES
-    # ══════════════════════════════════════════════════════════════
-    def show_about(self, btn):
-        about = Gtk.AboutDialog(transient_for=self)
-        about.set_program_name("ConkyMan")
-        about.set_version("1.3-rc1")
-        about.set_copyright("🄯 2026 CuerdOS")
-        about.set_license_type(Gtk.License.GPL_3_0)
-        about.set_website("https://cuerdos.github.io")
-        about.set_website_label(self._t('visit_website', 'Visitar Página Web'))
-        about.set_comments(self._t('about_comments', 'Control de Yelena Conky.'))
-=======
->>>>>>> 6ed4f64 (Update: update conkyman core files)
         if os.path.exists(self.logo_path):
             logo_pix = QPixmap(self.logo_path)
             if not logo_pix.isNull():
@@ -1528,73 +1497,8 @@ class ConkymanApp(QMainWindow):
         self._status_timer.stop(); self._save_config(); super().closeEvent(event)
 
 
-class ConkymanApplication(Gtk.Application):
-    """
-    Gtk.Application wrapper para compatibilidad con Waybar y otros paneles Wayland.
-    El application_id 'conkyman' se convierte en el app_id de Wayland (xdg_toplevel),
-    permitiendo que Waybar muestre el icono correctamente mediante:
-        [wlr/taskbar]
-        app-id-whitelist = ["conkyman"]
-    o en reglas de estilo CSS:
-        #taskbar button.conkyman { ... }
-    """
-
-    def __init__(self):
-        super().__init__(
-            application_id="conkyman",
-            flags=Gio.ApplicationFlags.NON_UNIQUE,
-        )
-        self._window = None
-
-    def do_startup(self):
-        Gtk.Application.do_startup(self)
-        GLib.set_prgname("conkyman")
-        GLib.set_application_name("Conkyman")
-
-    def do_activate(self):
-        win = ConkymanApp()
-        # Asociar la ventana a esta GtkApplication:
-        # → GTK establece xdg_toplevel.set_app_id("conkyman")
-        # → Waybar y otros paneles Wayland leerán app_id = "conkyman"
-        win.set_application(self)
-        win.connect("destroy", self._on_window_destroy)
-        win.show_all()
-        GLib.idle_add(self._set_appid_after_realize, win)
-        self._window = win
-
-    def _on_window_destroy(self, win):
-        try:
-            win._save_config()
-        except Exception:
-            pass
-        self._window = None
-        self.quit()
-
-    @staticmethod
-    def _set_appid_after_realize(win):
-        try:
-            gdk_win = win.get_window()
-            if gdk_win:
-                gdk_win.set_icon_name("conkyman")
-                if hasattr(gdk_win, "set_utf8_property"):
-                    try:
-                        gdk_win.set_utf8_property("_NET_WM_ICON_NAME", "conkyman")
-                    except Exception:
-                        pass
-        except Exception as e:
-            print(f"[ICON] Post-realize setup: {e}")
-        return False
-
-
 if __name__ == "__main__":
-<<<<<<< HEAD
-    GLib.set_prgname("conkyman")
-    GLib.set_application_name("Conkyman")
-    app = ConkymanApplication()
-    sys.exit(app.run(sys.argv))
-=======
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     w = ConkymanApp(); w.showMaximized()
     sys.exit(app.exec())
->>>>>>> 6ed4f64 (Update: update conkyman core files)
