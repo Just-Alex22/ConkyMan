@@ -487,7 +487,7 @@ class ConkymanApp(QMainWindow):
 
         self._nav_btns[0].setChecked(True)
         sb.addStretch()
-        ver = QLabel("v1.2  ·  CuerdOS"); ver.setObjectName("ver_lbl")
+        ver = QLabel("v2.0  ·  CuerdOS"); ver.setObjectName("ver_lbl")
         ver.setAlignment(Qt.AlignCenter); sb.addWidget(ver)
 
         body_lay.addWidget(sidebar); body_lay.addWidget(vsep())
@@ -1235,7 +1235,7 @@ class ConkymanApp(QMainWindow):
 
         # Añadimos el símbolo de copyright © en la línea correspondiente
         info_texts = [
-            "<span style='font-size: 14pt;'><b>ConkyMan 1.2</b></span>",
+            "<span style='font-size: 14pt;'><b>ConkyMan v2.0</b></span>",
             "<small>© 2026 CuerdOS</small>", # Aquí incluimos el símbolo
             f"<i>{self._t('about_comments', 'Gestor de configuración para Conky.')}</i>",
             "<b>GPL 3.0</b>"
