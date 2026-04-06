@@ -450,7 +450,7 @@ class ConkymanApp(QMainWindow):
         self.lang_combo.currentIndexChanged.connect(self._on_lang)
         tb.addWidget(self.lang_combo)
 
-        btn_about = tool_btn("🛈", self.show_about)
+        btn_about = tool_btn("ℹ", self.show_about)
         btn_about.setToolTip(self._t('btn_about','Acerca de')); tb.addWidget(btn_about)
 
         root_lay.addWidget(topbar); root_lay.addWidget(hsep())
@@ -468,13 +468,13 @@ class ConkymanApp(QMainWindow):
         self._nav_btns = []
 
         nav_items = [
-            ('nav_appearance', 'Apariencia'),
-            ('nav_colors',     'Colores'),
-            ('nav_system',     'Sistema'),
-            ('nav_ajustes',    'Ajustes'),
-            ('nav_profiles',   'Perfiles'),
-            ('nav_status',     'Estado'),
-            ('nav_tools',      'Herramientas'),
+            ('nav_appearance', '▦  Apariencia'),
+            ('nav_colors',     '◑  Colores'),
+            ('nav_system',     '⚙  Sistema'),
+            ('nav_ajustes',    '☰  Ajustes'),
+            ('nav_profiles',   '❐  Perfiles'),
+            ('nav_status',     '●  Estado'),
+            ('nav_tools',      '⚒  Herramientas'),
         ]
         for i, (tr_key, default) in enumerate(nav_items):
             b = QPushButton(self._t(tr_key, default))
@@ -487,7 +487,7 @@ class ConkymanApp(QMainWindow):
 
         self._nav_btns[0].setChecked(True)
         sb.addStretch()
-        ver = QLabel("v2.0  ·  CuerdOS"); ver.setObjectName("ver_lbl")
+        ver = QLabel("v1.2  ·  CuerdOS"); ver.setObjectName("ver_lbl")
         ver.setAlignment(Qt.AlignCenter); sb.addWidget(ver)
 
         body_lay.addWidget(sidebar); body_lay.addWidget(vsep())
@@ -1196,8 +1196,9 @@ class ConkymanApp(QMainWindow):
     # ── Fuentes ───────────────────────────────────────────────
     def _pick_font(self, which):
         cur = self._font_nums if which == 'nums' else self._font_txt
-        f, ok = QFontDialog.getFont(cur, self)
-        if not ok: return
+        # PySide6: getFont devuelve (ok: bool, font: QFont) — orden inverso a PyQt5
+        ok, f = QFontDialog.getFont(cur, self)
+        if not ok or not isinstance(f, QFont): return
         if which == 'nums':
             self._font_nums = f
             self.font_nums_btn.setText(f"{f.family()}, {f.pointSize()}pt")
@@ -1215,50 +1216,23 @@ class ConkymanApp(QMainWindow):
 
     # ── Acciones ──────────────────────────────────────────────
     def show_about(self):
-        d = QDialog(self)
-        d.setWindowTitle(self._t("about_title", "Acerca de ConkyMan"))
-        d.setMinimumWidth(320)
-        d.setStyleSheet(QSS)
-
-        lay = QVBoxLayout(d)
-        lay.setContentsMargins(30, 30, 30, 30) # Aumentamos margen inferior al no haber botones
-        lay.setSpacing(12)
-
+        d = QDialog(self); d.setWindowTitle(self._t("about_title","Acerca de ConkyMan"))
+        d.setMinimumWidth(300); d.setStyleSheet(QSS)
+        lay = QVBoxLayout(d); lay.setContentsMargins(24,24,24,16); lay.setSpacing(10)
         if os.path.exists(self.logo_path):
-            logo_pix = QPixmap(self.logo_path)
-            if not logo_pix.isNull():
-                lbl_img = QLabel()
-                lbl_img.setAlignment(Qt.AlignCenter)
-                lbl_img.setPixmap(logo_pix.scaled(
-                    80, 80, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-                lay.addWidget(lbl_img)
-
-        # Añadimos el símbolo de copyright © en la línea correspondiente
-        info_texts = [
-            "<span style='font-size: 14pt;'><b>ConkyMan v2.0</b></span>",
-            "<small>© 2026 CuerdOS</small>", # Aquí incluimos el símbolo
-            f"<i>{self._t('about_comments', 'Gestor de configuración para Conky.')}</i>",
-            "<b>GPL 3.0</b>"
-        ]
-
-        for txt in info_texts:
-            l = QLabel(txt)
-            l.setWordWrap(True)
-            l.setAlignment(Qt.AlignCenter)
-            lay.addWidget(l)
-
-        lay.addSpacing(15)
-
-        btn_web = QPushButton(self._t('visit_website', 'Visitar página web'))
-        btn_web.setObjectName("action_btn")
-        btn_web.setCursor(Qt.PointingHandCursor)
+            lbl = QLabel(); lbl.setAlignment(Qt.AlignCenter)
+            lbl.setPixmap(QPixmap(self.logo_path).scaled(
+                80, 80, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            lay.addWidget(lbl)
+        for txt in ["<b><big>ConkyMan  1.2</big></b>","2026 CuerdOS",
+                    self._t('about_comments','Gestor de configuracion para Conky.'),"GPL 3.0"]:
+            l = QLabel(txt); l.setAlignment(Qt.AlignCenter); lay.addWidget(l)
+        btn_web = QPushButton(self._t('visit_website','Visitar pagina web')); btn_web.setObjectName("action_btn")
         btn_web.clicked.connect(
             lambda: QDesktopServices.openUrl(QUrl("https://cuerdos.github.io")))
         lay.addWidget(btn_web)
-
-        # Se eliminó la sección del QDialogButtonBox (botón Close)
-
-        d.exec()
+        bb = QDialogButtonBox(QDialogButtonBox.Close); bb.rejected.connect(d.accept)
+        lay.addWidget(bb); d.exec()
 
     def open_editor(self):
         script = os.path.join(self.base_path, "text.py")
