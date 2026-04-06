@@ -4,11 +4,11 @@
   <img src="Logos/conkyman.svg" alt="ConkyMan Logo" width="150"/>
 </p>
 
-![ConkyMan running on CuerdOS 2.0 Skycatcher with Cinnamon](Screenshots/screenshot.png)
+![ConkyMan running on Debian 13 with Cinnamon](Screenshots/screenshot.png)
 
 ## What is ConkyMan?
 
-**ConkyMan** is a powerful customization tool designed to manage **Conky**'s aesthetics and functionality through a modern **GTK3** graphical interface. Its goal is to simplify Linux desktop configuration, allowing users to adjust positions, switch between light and dark modes, and choose accent colors without manually editing code.
+**ConkyMan** is a powerful customization tool designed to manage **Conky**'s aesthetics and functionality through a modern **Qt 6** graphical interface. Its goal is to simplify Linux desktop configuration, allowing users to adjust positions, switch between light and dark modes, choose accent colors, manage autostart, make backups, set custom profiles, and more without manually editing code.
 
 ## Characteristics
 
@@ -24,8 +24,8 @@ experienced users who don't want to search for the specific `.conkyrc` or `conky
 ## Requirements
 - **Python3.x**
 - **Conky**
-- **GTK 3**
-- **PyGObject**
+- **Qt 6**
+- **PySide6**
 
 ## Instalation
 Clone the repository and run the app:
@@ -37,7 +37,7 @@ python3 conkyman.py
 ```
 
 ## Contributing
-If you want to collaborate with the development of **ConkyMan**, follow us on GitHub send your **Pull Requests** and **Issues** through the repository
+If you want to collaborate with the development of **ConkyMan**, follow us on GitHub and send your **Pull Requests** and **Issues** through the repository
 
 ## Licence
 This program comes with the GNU GPLv3 licence, consult https://www.gnu.org/licenses/gpl-3.0.en.html for more information.
