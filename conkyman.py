@@ -78,7 +78,7 @@ NoDisplay=false
 X-GNOME-Autostart-enabled=true
 """
 
-LANG_FLAGS = {'es':'ES Español','en':'EN English','pt':'PT Português','ca':'CA Català'}
+LANG_FLAGS = {'es':'ES Español','en':'EN English','pt':'PT Português','ca':'CA Català','ja':'JA 日本語','tr':'TR Türkçe','de':'DE Deutsche','zh':'ZH 汉语','ko':'KO 한국어','it':'IT Italiano','fr':'FR Française'}
 
 COLORS_DATA = {
     "light": {
@@ -487,7 +487,7 @@ class ConkymanApp(QMainWindow):
 
         self._nav_btns[0].setChecked(True)
         sb.addStretch()
-        ver = QLabel("v1.2  ·  CuerdOS"); ver.setObjectName("ver_lbl")
+        ver = QLabel("v2.0.1  ·  CuerdOS"); ver.setObjectName("ver_lbl")
         ver.setAlignment(Qt.AlignCenter); sb.addWidget(ver)
 
         body_lay.addWidget(sidebar); body_lay.addWidget(vsep())
@@ -1216,23 +1216,48 @@ class ConkymanApp(QMainWindow):
 
     # ── Acciones ──────────────────────────────────────────────
     def show_about(self):
-        d = QDialog(self); d.setWindowTitle(self._t("about_title","Acerca de ConkyMan"))
-        d.setMinimumWidth(300); d.setStyleSheet(QSS)
-        lay = QVBoxLayout(d); lay.setContentsMargins(24,24,24,16); lay.setSpacing(10)
+        d = QDialog(self)
+        d.setWindowTitle(self._t("about_title", "Acerca de ConkyMan"))
+        d.setMinimumWidth(320)
+        d.setStyleSheet(QSS)
+        
+        lay = QVBoxLayout(d)
+        lay.setContentsMargins(30, 30, 30, 30) 
+        lay.setSpacing(12)
+        
         if os.path.exists(self.logo_path):
-            lbl = QLabel(); lbl.setAlignment(Qt.AlignCenter)
-            lbl.setPixmap(QPixmap(self.logo_path).scaled(
-                80, 80, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-            lay.addWidget(lbl)
-        for txt in ["<b><big>ConkyMan  1.2</big></b>","2026 CuerdOS",
-                    self._t('about_comments','Gestor de configuracion para Conky.'),"GPL 3.0"]:
-            l = QLabel(txt); l.setAlignment(Qt.AlignCenter); lay.addWidget(l)
-        btn_web = QPushButton(self._t('visit_website','Visitar pagina web')); btn_web.setObjectName("action_btn")
+            logo_pix = QPixmap(self.logo_path)
+            if not logo_pix.isNull():
+                lbl_img = QLabel()
+                lbl_img.setAlignment(Qt.AlignCenter)
+                lbl_img.setPixmap(logo_pix.scaled(
+                    80, 80, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                lay.addWidget(lbl_img)
+        
+        info_texts = [
+            "<span style='font-size: 14pt;'><b>ConkyMan 2.0.1</b></span>",
+            "<small>© 2026 CuerdOS Dev Team</small>", 
+            f"<i>{self._t('about_comments', 'Gestor de configuración para Conky.')}</i>",
+            "<b>GPL 3.0</b>"
+        ]
+        
+        for txt in info_texts:
+            l = QLabel(txt)
+            l.setWordWrap(True)
+            l.setAlignment(Qt.AlignCenter)
+            lay.addWidget(l)
+            
+        lay.addSpacing(15)
+        
+        btn_web = QPushButton(self._t('visit_website', 'Visitar página web'))
+        btn_web.setObjectName("action_btn")
+        btn_web.setCursor(Qt.PointingHandCursor)
         btn_web.clicked.connect(
             lambda: QDesktopServices.openUrl(QUrl("https://cuerdos.github.io")))
         lay.addWidget(btn_web)
-        bb = QDialogButtonBox(QDialogButtonBox.Close); bb.rejected.connect(d.accept)
-        lay.addWidget(bb); d.exec()
+
+      
+        d.exec()
 
     def open_editor(self):
         script = os.path.join(self.base_path, "text.py")
