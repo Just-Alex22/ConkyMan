@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-"""
-ConkyMan — PySide6
-Sidebar + QStackedWidget. UI nativa Qt con QSS Adwaita Dark.
-"""
 import os, re, subprocess, configparser, sys, shutil, json, locale
 from datetime import datetime
 
@@ -15,29 +11,31 @@ from PySide6.QtWidgets import (
     QTextEdit, QListWidget, QListWidgetItem, QInputDialog,
 )
 from PySide6.QtGui  import (QIcon, QColor, QFont, QPixmap, QDesktopServices,
-                             QPainter, QImage)
-from PySide6.QtCore import Qt, QThread, Signal, QObject, QSize, QUrl, QTimer
+                             QPainter, QImage, QPalette)
+from PySide6.QtCore import Qt, QThread, Signal, QObject, QSize, QUrl, QTimer, QRect, QPoint
 from PySide6.QtSvg  import QSvgRenderer
+from about_theme import build_about_colors
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from translations import Translator, set_language as set_global_lang
+from app_identity import APP_ID, APP_NAME, install_icon_theme
 
-# ─────────────────────────────────────────────────────────────
-# Autodetección de idioma del sistema
-# ─────────────────────────────────────────────────────────────
-SUPPORTED_LANGS = {'es', 'en', 'de', 'fr', 'pt', 'ja', 'ko', 'ca', 'it', 'tr', 'ru'}
+
+
+
+SUPPORTED_LANGS = {'es', 'en', 'de', 'fr', 'pt', 'ja', 'ko', 'ca', 'it', 'tr', 'ru', 'gl'}
 
 def _detect_system_lang():
     """Devuelve el código de idioma soportado más cercano al idioma del sistema."""
     candidates = []
-    # LANGUAGE tiene preferencias ordenadas, p.ej. "es_MX:es:en"
+
     for var in ('LANGUAGE', 'LANG', 'LC_ALL', 'LC_MESSAGES'):
         val = os.environ.get(var, '')
         if val:
             for part in val.split(':'):
                 code = part.split('_')[0].split('.')[0].lower()
                 if code: candidates.append(code)
-    # También desde locale
+
     try:
         loc = locale.getlocale()[0] or ''
         candidates.append(loc.split('_')[0].lower())
@@ -48,9 +46,9 @@ def _detect_system_lang():
             return c
     return 'en'
 
-# ─────────────────────────────────────────────────────────────
-# Plantillas Conky  (actualizadas con el nuevo config)
-# ─────────────────────────────────────────────────────────────
+
+
+
 DEFAULT_CONKY_LUA = r"""conky.config = {
     out_to_wayland = true, out_to_x = true,
     own_window = true,
@@ -76,12 +74,12 @@ ${voffset 10}${font Fira Sans:weight=Normal:size=55}${color1}${time %H}${font}${
 ${voffset 10}${font Fira Sans Medium:size=13}${color}${time %a, %d %b %Y}${font}
 ${voffset 5}${font Fira Sans:Italic:size=11}${color2}${font}
 ${voffset 5}${hr 1}
-${voffset 5}${font Fira Sans:size=10}${color}CPU: ${goto 55}${color2}${cpu}% ${alignr}${cpugraph 8,70 5B8080 B0E0E6}
-${color}RAM: ${goto 55}${color2}${memperc}% ${alignr}${memgraph 8,70 5B8080 B0E0E6}
-${color}SWP: ${goto 55}${color2}${swapperc}% ${alignr}${swapbar 8,70 B0E0E6}
-${color}DSK: ${goto 55}${color2}${fs_used_perc /}% ${alignr}${diskiograph 8,70 5B8080 B0E0E6}
+${voffset 5}${font Fira Sans:size=10}${color}%%CPU%%: ${goto 55}${color2}${cpu}% ${alignr}${cpugraph 8,70 5B8080 B0E0E6}
+${color}%%RAM%%: ${goto 55}${color2}${memperc}% ${alignr}${memgraph 8,70 5B8080 B0E0E6}
+${color}%%SWAP%%: ${goto 55}${color2}${swapperc}% ${alignr}${swapbar 8,70 B0E0E6}
+${color}%%DISK%%: ${goto 55}${color2}${fs_used_perc /}% ${alignr}${diskiograph 8,70 5B8080 B0E0E6}
 ${voffset 10}${hr 1}
-${voffset 5}${color2}${font Fira Sans:Bold:size=9}NOW PLAYING:
+${voffset 5}${color2}${font Fira Sans:Bold:size=9}%%NOWPLAYING%%:
 ${color}${font Fira Mono:size=9}${scroll 30 5 ${execi 5 playerctl metadata --format '{{ title }}'}}
 ${color2}${font Fira Mono:Italic:size=8}${scroll 30 5 ${execi 5 playerctl metadata --format '{{ artist }}'}}${font}
 ]]"""
@@ -135,8 +133,72 @@ ${voffset -20}${font Roboto:weight=Normal:size=85}${color1}${time %H}${font}
 ${voffset -40}${offset 75}${font Roboto Condensed:weight=Medium:size=80}${color2}${time %M}${font}
 ${font Roboto Condensed:size=14}${color}${time %a, %d %b %Y}${font}
 ${font Roboto Condensed:size=12}${color}
-Disk: ${color2}${fs_used_perc /}%${color} ${diskiograph 10,20 5B8080 8AA34F}${color}  RAM: ${color2}${memperc}%${color} ${memgraph 10,20 5B8080 8AA34F}${color}
-${offset 50}CPU: ${color2}${cpu}%${color} ${cpugraph 10,20 5B8080 8AA34F}${color}
+%%DISK%%: ${color2}${fs_used_perc /}%${color} ${diskiograph 10,20 5B8080 8AA34F}${color}  %%RAM%%: ${color2}${memperc}%${color} ${memgraph 10,20 5B8080 8AA34F}${color}
+${offset 50}%%CPU%%: ${color2}${cpu}%${color} ${cpugraph 10,20 5B8080 8AA34F}${color}
+]]"""
+
+NORD_CONKY_LUA = r"""conky.config = {
+    out_to_wayland = true, out_to_x = true,
+    own_window = true,
+    own_window_class = 'Conky',
+    own_window_type = 'normal',
+    own_window_transparent = true,
+    own_window_argb_visual = true,
+    own_window_argb_value = 0,
+    own_window_hints = 'below,sticky,skip_taskbar,skip_pager',
+    xinerama_head = 0, alignment = 'top_right', gap_x = 20, gap_y = 25,
+    minimum_width = 220, minimum_height = 300,
+    use_xft = true, font = 'JetBrains Mono:size=10',
+    default_color = 'D8DEE9',
+    color1 = 'ECEFF4',
+    color2 = '88C0D0',
+    update_interval = 1.0, double_buffer = true,
+    draw_shades = false, draw_outline = false, draw_borders = false,
+    draw_graph_borders = true, cpu_avg_samples = 2, net_avg_samples = 2,
+    override_utf8_locale = true, format_human_readable = true,
+}
+conky.text = [[
+${font JetBrains Mono:bold:size=13}${color1}%%SYSTEM%%${font}
+${voffset 4}${hr 1}
+${voffset 4}${color}%%CPU%%: ${goto 60}${color2}${cpu}% ${alignr}${cpugraph 8,70 5B8080 B0E0E6}
+${color}%%MEMORY%%: ${goto 60}${color2}${memperc}% ${alignr}${memgraph 8,70 5B8080 B0E0E6}
+${color}%%DISK%%: ${goto 60}${color2}${fs_used_perc /}% ${alignr}${diskiograph 8,70 5B8080 B0E0E6}
+${voffset 8}${hr 1}
+${voffset 4}${color}%%NETWORK%% ${alignr}${color2}${downspeed} / ${upspeed}
+${voffset 4}${color}%%UPTIME%%: ${goto 60}${color2}${uptime}
+]]"""
+
+RETROWAVE_CONKY_LUA = r"""conky.config = {
+    out_to_wayland = true, out_to_x = true,
+    own_window = true,
+    own_window_class = 'Conky',
+    own_window_type = 'normal',
+    own_window_transparent = true,
+    own_window_argb_visual = true,
+    own_window_argb_value = 200,
+    own_window_hints = 'below,sticky,skip_taskbar,skip_pager',
+    xinerama_head = 0, alignment = 'bottom_left', gap_x = 24, gap_y = 40,
+    minimum_width = 260, minimum_height = 220,
+    use_xft = true, font = 'Hack:size=9',
+    default_color = '00F0FF',
+    color1 = '00F0FF',
+    color2 = 'FF2E97',
+    update_interval = 1.0, double_buffer = true,
+    draw_shades = false, draw_outline = false, draw_borders = true,
+    draw_graph_borders = true, cpu_avg_samples = 2, net_avg_samples = 2,
+    override_utf8_locale = true, format_human_readable = true,
+}
+conky.text = [[
+${color2}${font Hack:bold:size=11}${time %H:%M:%S}${font}${color}
+${voffset 4}${color2}${hr 1}
+${voffset 4}${color1}%%CPU%%  ${color}${cpu}% ${alignr}${color1}${freq_g}GHz
+${cpugraph 18,240 5B8080 B0E0E6}
+${voffset 4}${color1}%%RAM%%  ${color}${memperc}% ${alignr}${color1}${mem}
+${color2}${membar 6,240}
+${voffset 6}${color2}────── ${color1}%%TOPPROCESSES%%${color2} ──────
+${color}${top name 1}${alignr}${top cpu 1}%
+${color}${top name 2}${alignr}${top cpu 2}%
+${color}${top name 3}${alignr}${top cpu 3}%
 ]]"""
 
 
@@ -150,17 +212,67 @@ X-GNOME-Autostart-enabled=true
 """
 
 LANG_FLAGS = {
-    'es': 'ES Español',
-    'en': 'EN English',
-    'de': 'DE Deutsch',
-    'fr': 'FR Français',
-    'pt': 'PT Português',
-    'ja': 'JA 日本語',
-    'ko': 'KO 한국어',
-    'ca': 'CA Català',
-    'it': 'IT Italiano',
-    'tr': 'TR Türkçe',
-    'ru': 'RU Русский',
+    'es': 'Español',
+    'en': 'English',
+    'de': 'Deutsch',
+    'fr': 'Français',
+    'pt': 'Português',
+    'ja': '日本語',
+    'ko': '한국어',
+    'ca': 'Català',
+    'it': 'Italiano',
+    'tr': 'Türkçe',
+    'ru': 'Русский',
+    'gl': 'Galego',
+}
+
+
+
+
+
+CONKY_LABELS = {
+    'es': {'cpu':'CPU','ram':'RAM','swap':'Swap','disk':'Disco','network':'Red',
+           'system':'Sistema','memory':'Memoria','uptime':'Tiempo activo',
+           'now_playing':'Reproduciendo','top_processes':'Top Procesos'},
+    'en': {'cpu':'CPU','ram':'RAM','swap':'Swap','disk':'Disk','network':'Network',
+           'system':'System','memory':'Memory','uptime':'Uptime',
+           'now_playing':'Now Playing','top_processes':'Top Processes'},
+    'de': {'cpu':'CPU','ram':'RAM','swap':'Swap','disk':'Festplatte','network':'Netzwerk',
+           'system':'System','memory':'Arbeitsspeicher','uptime':'Laufzeit',
+           'now_playing':'Läuft gerade','top_processes':'Top-Prozesse'},
+    'fr': {'cpu':'CPU','ram':'RAM','swap':'Swap','disk':'Disque','network':'Réseau',
+           'system':'Système','memory':'Mémoire','uptime':'Temps de fonctionnement',
+           'now_playing':'Lecture en cours','top_processes':'Processus principaux'},
+    'pt': {'cpu':'CPU','ram':'RAM','swap':'Swap','disk':'Disco','network':'Rede',
+           'system':'Sistema','memory':'Memória','uptime':'Tempo ativo',
+           'now_playing':'Reproduzindo','top_processes':'Principais Processos'},
+    'ja': {'cpu':'CPU','ram':'RAM','swap':'スワップ','disk':'ディスク','network':'ネットワーク',
+           'system':'システム','memory':'メモリ','uptime':'稼働時間',
+           'now_playing':'再生中','top_processes':'上位プロセス'},
+    'ko': {'cpu':'CPU','ram':'RAM','swap':'스왑','disk':'디스크','network':'네트워크',
+           'system':'시스템','memory':'메모리','uptime':'가동 시간',
+           'now_playing':'재생 중','top_processes':'상위 프로세스'},
+    'ca': {'cpu':'CPU','ram':'RAM','swap':'Swap','disk':'Disc','network':'Xarxa',
+           'system':'Sistema','memory':'Memòria','uptime':'Temps actiu',
+           'now_playing':'Reproduint','top_processes':'Processos principals'},
+    'it': {'cpu':'CPU','ram':'RAM','swap':'Swap','disk':'Disco','network':'Rete',
+           'system':'Sistema','memory':'Memoria','uptime':'Tempo di attività',
+           'now_playing':'In riproduzione','top_processes':'Processi principali'},
+    'tr': {'cpu':'CPU','ram':'RAM','swap':'Takas','disk':'Disk','network':'Ağ',
+           'system':'Sistem','memory':'Bellek','uptime':'Çalışma süresi',
+           'now_playing':'Şimdi Çalıyor','top_processes':'En Üst İşlemler'},
+    'ru': {'cpu':'CPU','ram':'RAM','swap':'Своп','disk':'Диск','network':'Сеть',
+           'system':'Система','memory':'Память','uptime':'Время работы',
+           'now_playing':'Сейчас играет','top_processes':'Топ процессов'},
+    'gl': {'cpu':'CPU','ram':'RAM','swap':'Swap','disk':'Disco','network':'Rede',
+           'system':'Sistema','memory':'Memoria','uptime':'Tempo activo',
+           'now_playing':'Reproducindo','top_processes':'Top Procesos'},
+}
+CONKY_LABEL_TOKENS = {
+    'cpu':'%%CPU%%', 'ram':'%%RAM%%', 'swap':'%%SWAP%%', 'disk':'%%DISK%%',
+    'network':'%%NETWORK%%', 'system':'%%SYSTEM%%', 'memory':'%%MEMORY%%',
+    'uptime':'%%UPTIME%%', 'now_playing':'%%NOWPLAYING%%',
+    'top_processes':'%%TOPPROCESSES%%',
 }
 
 COLORS_DATA = {
@@ -180,10 +292,10 @@ COLORS_DATA = {
 
 def _safe(name): return re.sub(r'[^a-z0-9]', '_', name.lower())
 
-# ─────────────────────────────────────────────────────────────
-# Renderizado SVG → QPixmap con colorización blanca
-# Resuelve el problema de SVG simbólico invisible/negro
-# ─────────────────────────────────────────────────────────────
+
+
+
+
 def _svg_render(path, size=28):
     """Renderiza un SVG a QPixmap sin modificar colores (para logos multicolor)."""
     if not os.path.exists(path):
@@ -211,14 +323,23 @@ def _svg_icon(path, size=28, color='#ffffff'):
                 img.setPixel(x, y, (a << 24) | (r << 16) | (g << 8) | b)
     return QPixmap.fromImage(img)
 
+
+def _mix_color(c1: QColor, c2: QColor, t: float) -> QColor:
+    """Mezcla c1 y c2 (t=0 -> c1, t=1 -> c2)."""
+    r = c1.red()   + (c2.red()   - c1.red())   * t
+    g = c1.green() + (c2.green() - c1.green()) * t
+    b = c1.blue()  + (c2.blue()  - c1.blue())  * t
+    return QColor(int(r), int(g), int(b))
+
+
 def _themed_icon(name, size=16, color='#ffffff'):
-    """Carga un icono simbólico del tema y lo coloriza al color dado.
-    Siempre pide la variante -symbolic para garantizar que sea monocromo."""
-    # Preferir variante simbólica explícita
+    """Carga un icono simbolico del tema del sistema y lo coloriza al
+    color dado, para que los botones usen los iconos del icon theme
+    activo en vez de quedarse sin icono."""
     sym_name = name if name.endswith('-symbolic') else name + '-symbolic'
     icon = QIcon.fromTheme(sym_name)
     if icon.isNull():
-        icon = QIcon.fromTheme(name)   # fallback al icono normal
+        icon = QIcon.fromTheme(name)
     if icon.isNull():
         return QIcon()
     px = icon.pixmap(size, size)
@@ -233,157 +354,226 @@ def _themed_icon(name, size=16, color='#ffffff'):
                 img.setPixel(x, y, (a << 24) | (r << 16) | (g << 8) | b)
     return QIcon(QPixmap.fromImage(img))
 
-# ─────────────────────────────────────────────────────────────
-# QSS — Adwaita Dark
-# ─────────────────────────────────────────────────────────────
+
+def _themed_qss(pal: QPalette) -> str:
+    """Genera el QSS final, calculando colores de separadores y texto secundario
+    con contraste garantizado a partir del fondo y el texto reales del sistema
+    (en vez de confiar en los roles 'mid'/'dark' de la paleta, que muchos temas
+    dejan mal calibrados y terminan siendo casi invisibles)."""
+    window = pal.color(QPalette.Window)
+    text   = pal.color(QPalette.WindowText)
+    sep    = _mix_color(window, text, 0.35).name()
+    muted  = _mix_color(text, window, 0.40).name()
+    return QSS.replace('__SEP__', sep).replace('__MUTED__', muted)
+
+
+
 QSS = """
-* { font-family: cantarell, sans-serif; font-size: 13px; outline: none; }
-QMainWindow { background: #242424; }
-QWidget      { background: #242424; color: #ebebeb; }
+* { font-size: 13px; outline: none; }
+QMainWindow { background: palette(window); }
+QWidget      { background: palette(window); color: palette(window-text); }
 QPushButton  { border: 1px solid transparent; }
 QRadioButton { border: none; }
 QCheckBox    { border: none; }
 QLabel       { border: none; background: transparent; }
 
 QWidget#sidebar {
-    background: #2d2d2d;
-    border-right: 1px solid #4a4a4a;
+    background: palette(base);
+    border-right: 1px solid __SEP__;
 }
 QPushButton#nav_btn {
-    background: transparent; color: #c0c0c0;
+    background: transparent; color: palette(window-text);
     border: none; border-radius: 6px;
     padding: 9px 14px; text-align: left; font-size: 13px;
 }
-QPushButton#nav_btn:hover   { background: #383838; color: #ebebeb; }
-QPushButton#nav_btn:checked { background: #3584e4; color: #ffffff; font-weight: bold; }
+QPushButton#nav_btn:hover   { background: palette(alternate-base); color: palette(window-text); }
+QPushButton#nav_btn:checked { background: palette(highlight); color: palette(highlighted-text); font-weight: bold; }
 
-QWidget#topbar { background: #2d2d2d; border-bottom: 1px solid #4a4a4a; }
+QWidget#topbar { background: palette(base); border-bottom: 1px solid __SEP__; }
 
 QFrame#section {
-    background: #2d2d2d; border: 1px solid #4a4a4a; border-radius: 8px;
+    background: palette(base); border: 1px solid __SEP__; border-radius: 8px;
 }
-QLabel#sec_title  { color: #ebebeb; font-size: 13px; font-weight: bold; }
-QLabel#sec_sub    { color: #808080; font-size: 12px; }
-QLabel#ver_lbl    { color: #606060; font-size: 11px; }
+QLabel#sec_title  { color: palette(window-text); font-size: 13px; font-weight: bold; }
+QLabel#sec_sub    { color: __MUTED__; font-size: 12px; }
+QLabel#ver_lbl    { color: __MUTED__; font-size: 11px; }
 QLabel#status_ok  { color: #57e389; font-size: 12px; font-weight: bold; }
 QLabel#status_err { color: #ff7b63; font-size: 12px; font-weight: bold; }
-QLabel#mono       { font-family: monospace; font-size: 11px; color: #a0a0a0; }
+QLabel#mono       { font-family: monospace; font-size: 11px; color: __MUTED__; }
 
-QRadioButton { color: #ebebeb; spacing: 6px; font-size: 13px; background: transparent; }
+QRadioButton { color: palette(window-text); spacing: 6px; font-size: 13px; background: transparent; }
 QRadioButton::indicator {
     width: 16px; height: 16px; border-radius: 8px;
-    border: 2px solid #5c5c5c; background: #383838;
+    border: 2px solid __SEP__; background: palette(base);
 }
-QRadioButton::indicator:checked { background: #3584e4; border-color: #3584e4; image: none; }
-QRadioButton:hover { color: #4a90d9; }
+QRadioButton::indicator:checked { background: palette(highlight); border-color: palette(highlight); image: none; }
+QRadioButton:hover { color: palette(highlight); }
 
-QCheckBox { color: #ebebeb; font-size: 13px; spacing: 6px; background: transparent; }
+QCheckBox { color: palette(window-text); font-size: 13px; spacing: 6px; background: transparent; }
 QCheckBox::indicator {
     width: 16px; height: 16px; border-radius: 4px;
-    border: 2px solid #5c5c5c; background: #383838;
+    border: 2px solid __SEP__; background: palette(base);
 }
-QCheckBox::indicator:checked { background: #3584e4; border-color: #3584e4; }
+QCheckBox::indicator:checked { background: palette(highlight); border-color: palette(highlight); }
 
 QComboBox {
-    background: #383838; color: #ebebeb;
-    border: 1px solid #5c5c5c; border-radius: 6px;
+    background: palette(button); color: palette(button-text);
+    border: 1px solid __SEP__; border-radius: 6px;
     padding: 4px 10px; min-width: 120px;
 }
-QComboBox:hover { border-color: #7a7a7a; }
+QComboBox:hover { border-color: __MUTED__; }
 QComboBox::drop-down { border: none; width: 20px; }
 QComboBox QAbstractItemView {
-    background: #383838; color: #ebebeb;
-    selection-background-color: #3584e4; border: 1px solid #5c5c5c;
+    background: palette(base); color: palette(text);
+    selection-background-color: palette(highlight);
+    selection-color: palette(highlighted-text);
+    border: 1px solid __SEP__;
 }
 
-QSlider::groove:horizontal { height: 4px; background: #4a4a4a; border-radius: 2px; }
+QSlider::groove:horizontal { height: 4px; background: __SEP__; border-radius: 2px; }
 QSlider::handle:horizontal {
-    background: #3584e4; width: 16px; height: 16px;
-    margin: -6px 0; border-radius: 8px; border: 2px solid #2870c8;
+    background: palette(highlight); width: 16px; height: 16px;
+    margin: -6px 0; border-radius: 8px; border: 2px solid __MUTED__;
 }
-QSlider::sub-page:horizontal { background: #3584e4; border-radius: 2px; }
+QSlider::sub-page:horizontal { background: palette(highlight); border-radius: 2px; }
 
 QSpinBox {
-    background: #383838; color: #ebebeb;
-    border: 1px solid #5c5c5c; border-radius: 6px;
+    background: palette(button); color: palette(button-text);
+    border: 1px solid __SEP__; border-radius: 6px;
     padding: 4px 8px; min-width: 72px;
 }
-QSpinBox:focus { border-color: #3584e4; }
-QSpinBox::up-button, QSpinBox::down-button { width: 18px; background: #4a4a4a; border-radius: 3px; }
+QSpinBox:focus { border-color: palette(highlight); }
+QSpinBox::up-button, QSpinBox::down-button { width: 18px; background: __SEP__; border-radius: 3px; }
 
 QLineEdit {
-    background: #383838; color: #ebebeb;
-    border: 1px solid #5c5c5c; border-radius: 6px; padding: 5px 10px;
+    background: palette(base); color: palette(text);
+    border: 1px solid __SEP__; border-radius: 6px; padding: 5px 10px;
 }
-QLineEdit:focus { border-color: #3584e4; }
+QLineEdit:focus { border-color: palette(highlight); }
 
 QTextEdit {
-    background: #1c1c1c; color: #c0c0c0;
-    border: 1px solid #4a4a4a; border-radius: 6px;
+    background: palette(base); color: palette(text);
+    border: 1px solid __SEP__; border-radius: 6px;
     font-family: monospace; font-size: 11px; padding: 8px;
 }
 
 QListWidget {
-    background: #2d2d2d; color: #ebebeb;
-    border: 1px solid #4a4a4a; border-radius: 8px; outline: none;
+    background: palette(base); color: palette(text);
+    border: 1px solid __SEP__; border-radius: 8px; outline: none;
 }
 QListWidget::item { padding: 9px 14px; border-radius: 5px; }
-QListWidget::item:selected { background: #3584e4; color: #ffffff; }
-QListWidget::item:hover    { background: #383838; }
+QListWidget::item:selected { background: palette(highlight); color: palette(highlighted-text); }
+QListWidget::item:hover    { background: palette(alternate-base); }
 
 QPushButton#tool_btn {
-    background: transparent; color: #ffffff;
+    background: transparent; color: palette(window-text);
     border: none; border-radius: 6px; padding: 6px 10px;
 }
-QPushButton#tool_btn:hover   { background: #383838; }
-QPushButton#tool_btn:pressed { background: #4a4a4a; }
+QPushButton#tool_btn:hover   { background: palette(alternate-base); }
+QPushButton#tool_btn:pressed { background: __SEP__; }
 
 QPushButton#action_btn {
-    background: #383838; color: #ebebeb;
-    border: 1px solid #5c5c5c; border-radius: 6px; padding: 6px 16px;
+    background: palette(button); color: palette(button-text);
+    border: 1px solid rgba(128,128,128,110); border-radius: 6px; padding: 6px 16px;
 }
-QPushButton#action_btn:hover   { background: #444444; border-color: #7a7a7a; }
-QPushButton#action_btn:pressed { background: #2d2d2d; }
-QPushButton#action_btn:disabled{ background: #2d2d2d; color: #606060; border-color: #404040; }
+QPushButton#action_btn:hover   { background: palette(light); border-color: __MUTED__; }
+QPushButton#action_btn:pressed { background: __SEP__; }
+QPushButton#action_btn:disabled{ background: palette(window); color: __MUTED__; border-color: rgba(128,128,128,60); }
 
 QPushButton#danger_btn {
-    background: #3d1a1a; color: #ff7b63;
+    background: palette(base); color: #ff7b63;
     border: 1px solid #6b2b2b; border-radius: 6px; padding: 6px 16px;
 }
 QPushButton#danger_btn:hover   { background: #4e2020; border-color: #8b3535; }
 QPushButton#danger_btn:pressed { background: #2d1010; }
 
 QPushButton#apply_btn {
-    background: #3584e4; color: #ffffff;
+    background: palette(highlight); color: palette(highlighted-text);
     border: none; border-radius: 6px;
     padding: 10px 28px; font-size: 13px; font-weight: bold;
 }
-QPushButton#apply_btn:hover    { background: #4a90d9; }
-QPushButton#apply_btn:pressed  { background: #2870c8; }
-QPushButton#apply_btn:disabled { background: #383838; color: #606060; }
+QPushButton#apply_btn:hover    { background: palette(highlight); }
+QPushButton#apply_btn:pressed  { background: __MUTED__; }
+QPushButton#apply_btn:disabled { background: palette(button); color: __MUTED__; }
 
-QScrollBar:vertical { background: #242424; width: 8px; border-radius: 4px; }
-QScrollBar::handle:vertical { background: #5c5c5c; border-radius: 4px; min-height: 30px; }
-QScrollBar::handle:vertical:hover { background: #7a7a7a; }
+QScrollBar:vertical { background: palette(window); width: 8px; border-radius: 4px; }
+QScrollBar::handle:vertical { background: __SEP__; border-radius: 4px; min-height: 30px; }
+QScrollBar::handle:vertical:hover { background: __MUTED__; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 QScrollArea { border: none; }
-QScrollArea > QWidget > QWidget { background: #242424; }
+QScrollArea > QWidget > QWidget { background: palette(window); }
 
-QFrame#hsep { background: #4a4a4a; max-height: 1px; border: none; }
-QFrame#vsep { background: #4a4a4a; max-width:  1px; border: none; }
+QFrame#hsep { background: __SEP__; max-height: 1px; border: none; }
+QFrame#vsep { background: __SEP__; max-width:  1px; border: none; }
 """
 
-# ─────────────────────────────────────────────────────────────
-# Worker thread
-# ─────────────────────────────────────────────────────────────
+
+
+
 class Worker(QObject):
     done = Signal(bool, str)
     def __init__(self, fn): super().__init__(); self._fn = fn
     def run(self): self.done.emit(*self._fn())
 
-# ─────────────────────────────────────────────────────────────
-# Helpers de layout
-# ─────────────────────────────────────────────────────────────
+
+class FlowLayout(QLayout):
+    """Layout que acomoda sus widgets en filas y salta de linea
+    automaticamente cuando no caben en el ancho disponible, en vez de
+    recortarlos como hacia el QHBoxLayout fijo original."""
+
+    def __init__(self, parent=None, margin=0, spacing=10):
+        super().__init__(parent)
+        self.setContentsMargins(margin, margin, margin, margin)
+        self._spacing = spacing
+        self._items = []
+
+    def addItem(self, item): self._items.append(item)
+    def count(self): return len(self._items)
+    def itemAt(self, index):
+        return self._items[index] if 0 <= index < len(self._items) else None
+    def takeAt(self, index):
+        return self._items.pop(index) if 0 <= index < len(self._items) else None
+    def expandingDirections(self): return Qt.Orientation(0)
+    def hasHeightForWidth(self): return True
+
+    def heightForWidth(self, width):
+        return self._do_layout(QRect(0, 0, width, 0), test_only=True)
+
+    def setGeometry(self, rect):
+        super().setGeometry(rect)
+        self._do_layout(rect, test_only=False)
+
+    def sizeHint(self): return self.minimumSize()
+
+    def minimumSize(self):
+        size = QSize()
+        for item in self._items:
+            size = size.expandedTo(item.minimumSize())
+        margins = self.contentsMargins()
+        size += QSize(margins.left() + margins.right(),
+                       margins.top() + margins.bottom())
+        return size
+
+    def _do_layout(self, rect, test_only):
+        x, y = rect.x(), rect.y()
+        line_height = 0
+        spacing = self._spacing
+        for item in self._items:
+            hint = item.sizeHint()
+            next_x = x + hint.width() + spacing
+            if next_x - spacing > rect.right() and line_height > 0:
+                x = rect.x(); y += line_height + spacing
+                next_x = x + hint.width() + spacing
+                line_height = 0
+            if not test_only:
+                item.setGeometry(QRect(x, y, hint.width(), hint.height()))
+            x = next_x
+            line_height = max(line_height, hint.height())
+        return y + line_height - rect.y()
+
+
+
+
 def hsep():
     f = QFrame(); f.setObjectName("hsep")
     f.setFrameShape(QFrame.HLine); f.setFixedHeight(1); return f
@@ -414,9 +604,9 @@ def row_widget(*widgets, spacing=10):
         else: l.addWidget(ww)
     return w
 
-# ═════════════════════════════════════════════════════════════
-# VENTANA PRINCIPAL
-# ═════════════════════════════════════════════════════════════
+
+
+
 class ConkymanApp(QMainWindow):
 
     def __init__(self):
@@ -433,7 +623,8 @@ class ConkymanApp(QMainWindow):
         for d in (self.config_dir, self.profiles_dir, self.backup_dir):
             os.makedirs(d, exist_ok=True)
 
-        # Icono de ventana — SVG renderizado en blanco
+
+        install_icon_theme(self.logo_path)
         logo_px = _svg_render(self.logo_path, 32)
         if not logo_px.isNull():
             self.setWindowIcon(QIcon(logo_px))
@@ -442,12 +633,12 @@ class ConkymanApp(QMainWindow):
         self._color_sel = {'c1': ('named', first_dark), 'c2': ('named', first_dark)}
         self._btn_groups = []
         self._tr_cbs     = []
-        self._dirty      = False   # True cuando hay cambios sin aplicar
+        self._dirty      = False
 
         self._font_nums = QFont("Fira Sans", 55)
         self._font_txt  = QFont("Fira Sans Medium", 13)
 
-        # ── Idioma: guardado > sistema > inglés ────────────────
+
         saved_lang = self._ini('General', 'language')
         if not saved_lang:
             saved_lang = _detect_system_lang()
@@ -459,12 +650,14 @@ class ConkymanApp(QMainWindow):
         self._status_timer.timeout.connect(self._refresh_status)
         self._status_timer.setInterval(3000)
 
-        self.setStyleSheet(QSS)
+        self.setStyleSheet(_themed_qss(self.palette()))
+        self._muted = _mix_color(self.palette().color(QPalette.WindowText),
+                                  self.palette().color(QPalette.Window), 0.40).name()
         self._build_ui()
         self.load_config()
         self._status_timer.start()
 
-    # ── helpers ───────────────────────────────────────────────
+
     def _detect_conky(self):
         home = os.path.expanduser("~")
         for p in [os.path.join(home, ".config", "conky", "conky.lua"),
@@ -490,7 +683,7 @@ class ConkymanApp(QMainWindow):
         """Marca que hay cambios sin aplicar."""
         if not self._dirty:
             self._dirty = True
-            # btn_apply puede no existir aún durante load_config en __init__
+
             if hasattr(self, 'btn_apply'):
                 self.btn_apply.setObjectName("apply_btn_dirty")
                 self.btn_apply.setStyleSheet(
@@ -512,65 +705,18 @@ class ConkymanApp(QMainWindow):
         except Exception:
             return None
 
-    # ── BUILD UI ──────────────────────────────────────────────
+
     def _build_ui(self):
         root = QWidget(); self.setCentralWidget(root)
         root_lay = QVBoxLayout(root)
         root_lay.setSpacing(0); root_lay.setContentsMargins(0, 0, 0, 0)
 
-        # ── Topbar ────────────────────────────────────────────
-        topbar = QWidget(); topbar.setObjectName("topbar"); topbar.setFixedHeight(48)
-        tb = QHBoxLayout(topbar); tb.setContentsMargins(12, 0, 12, 0); tb.setSpacing(6)
 
-        # Logo SVG renderizado en blanco
-        logo_px = _svg_render(self.logo_path, 28)
-        if not logo_px.isNull():
-            logo_lbl = QLabel(); logo_lbl.setPixmap(logo_px); tb.addWidget(logo_lbl)
-
-        app_title = QLabel("Conkyman")
-        app_title.setStyleSheet("font-size:15px;font-weight:bold;color:#ebebeb;")
-        tb.addWidget(app_title); tb.addStretch()
-
-        def tool_btn(icon_name, text, cb):
-            b = QPushButton(); b.setObjectName("tool_btn")
-            b.setCursor(Qt.PointingHandCursor)
-            ico = _themed_icon(icon_name, 16, '#ffffff')
-            if not ico.isNull():
-                b.setIcon(ico); b.setIconSize(QSize(16, 16))
-                b.setText("  " + text)
-            else:
-                b.setText(text)
-            b.clicked.connect(cb)
-            return b
-
-        self._btn_restart = tool_btn("view-refresh",   self._t('btn_restart','Reiniciar'), self.restart_conky)
-        self._btn_restore = tool_btn("edit-clear-all", self._t('btn_restore','Restaurar'), self.restore_defaults)
-        self._btn_editor  = tool_btn("document-edit",  self._t('btn_editor','Editor'),     self.open_editor)
-        for b in (self._btn_restart, self._btn_restore, self._btn_editor):
-            tb.addWidget(b)
-        self._reg(lambda: self._btn_restart.setText("  " + self._t('btn_restart','Reiniciar')))
-        self._reg(lambda: self._btn_restore.setText("  " + self._t('btn_restore','Restaurar')))
-        self._reg(lambda: self._btn_editor.setText("  "  + self._t('btn_editor','Editor')))
-
-        tb.addWidget(vsep())
-        self.lang_combo = QComboBox()
-        cur = self.translator.lang
-        for i, (code, label) in enumerate(LANG_FLAGS.items()):
-            self.lang_combo.addItem(label, code)
-            if code == cur: self.lang_combo.setCurrentIndex(i)
-        self.lang_combo.currentIndexChanged.connect(self._on_lang)
-        tb.addWidget(self.lang_combo)
-
-        btn_about = tool_btn("help-about", "", self.show_about)
-        btn_about.setToolTip(self._t('btn_about','Acerca de')); tb.addWidget(btn_about)
-
-        root_lay.addWidget(topbar); root_lay.addWidget(hsep())
-
-        # ── Body ──────────────────────────────────────────────
         body = QWidget(); body_lay = QHBoxLayout(body)
         body_lay.setSpacing(0); body_lay.setContentsMargins(0, 0, 0, 0)
 
-        # Sidebar
+        icon_color = self.palette().color(QPalette.WindowText).name()
+
         sidebar = QWidget(); sidebar.setObjectName("sidebar"); sidebar.setFixedWidth(190)
         sb = QVBoxLayout(sidebar); sb.setContentsMargins(10, 16, 10, 16); sb.setSpacing(4)
 
@@ -579,53 +725,80 @@ class ConkymanApp(QMainWindow):
         self._nav_btns = []
 
         nav_items = [
-            ('nav_appearance', 'Apariencia',   'preferences-desktop'),
-            ('nav_colors',     'Colores',       'preferences-color'),
-            ('nav_system',     'Sistema',       'preferences-system'),
-            ('nav_ajustes',    'Ajustes',       'preferences-other'),
-            ('nav_profiles',   'Perfiles',      'document-save'),
-            ('nav_status',     'Estado',        'utilities-system-monitor'),
-            ('nav_tools',      'Herramientas',  'system-run'),
+            ('nav_appearance', 'Apariencia',   'applications-graphics'),
+            ('nav_colors',     'Colores',      'preferences-desktop-color'),
+            ('nav_system',     'Sistema',      'preferences-system'),
+            ('nav_profiles',   'Perfiles',     'system-users'),
+            ('nav_status',     'Estado',       'utilities-system-monitor'),
+            ('nav_tools',      'Herramientas', 'applications-utilities'),
+            ('nav_ajustes',    'Ajustes',      'preferences-other'),
         ]
         for i, (tr_key, default, icon_name) in enumerate(nav_items):
             b = QPushButton(self._t(tr_key, default))
             b.setObjectName("nav_btn"); b.setCheckable(True)
-            ico = _themed_icon(icon_name, 16, '#ffffff')
-            if not ico.isNull():
-                b.setIcon(ico); b.setIconSize(QSize(16, 16))
             b.setCursor(Qt.PointingHandCursor)
+            b.setIcon(_themed_icon(icon_name, 16, icon_color))
+            b.setIconSize(QSize(16, 16))
             b.clicked.connect(lambda _=False, idx=i: self._nav(idx))
             self._nav_bg.addButton(b); self._nav_btns.append(b); sb.addWidget(b)
             self._reg(lambda btn=b, k=tr_key, d=default: btn.setText(self._t(k, d)))
 
         self._nav_btns[0].setChecked(True)
         sb.addStretch()
-        ver = QLabel("v2.1  ·  CuerdOS"); ver.setObjectName("ver_lbl")
-        ver.setAlignment(Qt.AlignCenter); sb.addWidget(ver)
+
+        sb.addWidget(hsep())
+        sb.addSpacing(4)
+
+        self.btn_restart = QPushButton(self._t('btn_restart', 'Reiniciar Conky'))
+        self.btn_restart.setObjectName("nav_btn"); self.btn_restart.setCursor(Qt.PointingHandCursor)
+        self.btn_restart.setIcon(_themed_icon('view-refresh', 16, icon_color))
+        self.btn_restart.setIconSize(QSize(16, 16))
+        self.btn_restart.clicked.connect(self.restart_conky)
+        self._reg(lambda: self.btn_restart.setText(self._t('btn_restart', 'Reiniciar Conky')))
+        sb.addWidget(self.btn_restart)
+
+        self.btn_editor = QPushButton(self._t('btn_editor', 'Abrir editor'))
+        self.btn_editor.setObjectName("nav_btn"); self.btn_editor.setCursor(Qt.PointingHandCursor)
+        self.btn_editor.setIcon(_themed_icon('accessories-text-editor', 16, icon_color))
+        self.btn_editor.setIconSize(QSize(16, 16))
+        self.btn_editor.clicked.connect(self.open_editor)
+        self._reg(lambda: self.btn_editor.setText(self._t('btn_editor', 'Abrir editor')))
+        sb.addWidget(self.btn_editor)
+
+        self.btn_about = QPushButton(self._t('btn_about', 'Acerca de'))
+        self.btn_about.setObjectName("nav_btn"); self.btn_about.setCursor(Qt.PointingHandCursor)
+        self.btn_about.setIcon(_themed_icon('help-about', 16, icon_color))
+        self.btn_about.setIconSize(QSize(16, 16))
+        self.btn_about.clicked.connect(self.show_about)
+        self._reg(lambda: self.btn_about.setText(self._t('btn_about', 'Acerca de')))
+        sb.addWidget(self.btn_about)
 
         body_lay.addWidget(sidebar); body_lay.addWidget(vsep())
 
-        # Stack
+
         self.stack = QStackedWidget()
         self.stack.addWidget(self._page_appearance())
         self.stack.addWidget(self._page_colors())
         self.stack.addWidget(self._page_system())
-        self.stack.addWidget(self._page_ajustes())
         self.stack.addWidget(self._page_profiles())
         self.stack.addWidget(self._page_status())
         self.stack.addWidget(self._page_tools())
+        self.stack.addWidget(self._page_ajustes())
         body_lay.addWidget(self.stack, 1)
 
         root_lay.addWidget(body, 1); root_lay.addWidget(hsep())
 
-        # Footer
+
         footer = QWidget(); footer.setFixedHeight(56)
         ft = QHBoxLayout(footer); ft.setContentsMargins(16, 0, 16, 0); ft.setSpacing(10)
         self._status_lbl = QLabel(); self._status_lbl.setObjectName("sec_sub")
-        ft.addWidget(self._status_lbl); ft.addStretch()
+        ft.addWidget(self._status_lbl)
+        ft.addStretch()
+
         self.btn_apply = QPushButton(self._t('btn_apply','Aplicar Cambios'))
         self.btn_apply.setObjectName("apply_btn")
         self.btn_apply.setCursor(Qt.PointingHandCursor)
+        self.btn_apply.setIcon(_themed_icon('emblem-ok', 16, '#ffffff'))
         self.btn_apply.clicked.connect(self._start_apply)
         ft.addWidget(self.btn_apply)
         self._reg(lambda: self.btn_apply.setText(self._t('btn_apply','Aplicar Cambios')))
@@ -636,14 +809,13 @@ class ConkymanApp(QMainWindow):
         if idx == 5: self._refresh_status()
         if idx == 4: self._refresh_profiles()
 
-    # ── helpers UI ────────────────────────────────────────────
+
     def _radio_section(self, parent_lay, title_key, title_default, items):
         fr, lay, lbl = section_frame(self._t(title_key, title_default))
         self._reg(lambda w=lbl, k=title_key, d=title_default: w.setText(self._t(k, d)))
         bg = QButtonGroup(fr); bg.setExclusive(True); self._btn_groups.append(bg)
         wrap = QWidget()
-        wlay = QHBoxLayout(wrap); wlay.setContentsMargins(0, 0, 0, 0); wlay.setSpacing(16)
-        wlay.setAlignment(Qt.AlignLeft)
+        wlay = FlowLayout(wrap, margin=0, spacing=16)
         for tr_key, default_lbl, attr, checked in items:
             r = QRadioButton(self._t(tr_key, default_lbl))
             r.setChecked(checked); bg.addButton(r); setattr(self, attr, r)
@@ -664,9 +836,9 @@ class ConkymanApp(QMainWindow):
         rl.addWidget(lbl); rl.addStretch(); rl.addWidget(widget)
         return row
 
-    # ══════════════════════════════════════════════════════════
-    # PÁGINAS
-    # ══════════════════════════════════════════════════════════
+
+
+
     def _page_appearance(self):
         sc, _, lay = scrolled()
 
@@ -683,7 +855,7 @@ class ConkymanApp(QMainWindow):
         ])
         self.mode_dark.toggled.connect(self._on_mode_toggled)
 
-        # Tipografía
+
         fr, flay, lbl_ty = section_frame(self._t('typography','Tipografia [Experimental]'))
         self._reg(lambda w=lbl_ty: w.setText(self._t('typography','Tipografia [Experimental]')))
         grid = QGridLayout(); grid.setHorizontalSpacing(16); grid.setVerticalSpacing(10)
@@ -780,26 +952,50 @@ class ConkymanApp(QMainWindow):
             ('desktop', 'desktop', 'type_desk',  False),
             ('panel',   'panel',   'type_panel', False),
         ])
-        # Modo de plantilla (Normal / Minimal / Legacy)
+
         fr_mode, fl_mode, lbl_mode = section_frame(self._t('conky_template','Plantilla Conky'))
         self._reg(lambda w=lbl_mode: w.setText(self._t('conky_template','Plantilla Conky')))
         bg_mode = QButtonGroup(fr_mode); bg_mode.setExclusive(True)
         self._btn_groups.append(bg_mode)
         mode_wrap = QWidget()
-        mode_lay  = QHBoxLayout(mode_wrap); mode_lay.setContentsMargins(0,0,0,0); mode_lay.setSpacing(16)
-        mode_lay.setAlignment(Qt.AlignLeft)
-        self.mode_normal = QRadioButton(self._t('mode_normal','Normal (Fira Sans)'))
-        self.mode_minimal= QRadioButton(self._t('mode_minimal','Minimal (solo reloj)'))
-        self.mode_legacy = QRadioButton(self._t('mode_legacy','Legacy (Roboto)'))
+        mode_lay  = QGridLayout(mode_wrap); mode_lay.setContentsMargins(0,0,0,0)
+        mode_lay.setHorizontalSpacing(16); mode_lay.setVerticalSpacing(8)
+        self.mode_normal   = QRadioButton(self._t('mode_normal','Normal (Fira Sans)'))
+        self.mode_minimal  = QRadioButton(self._t('mode_minimal','Minimal (solo reloj)'))
+        self.mode_legacy   = QRadioButton(self._t('mode_legacy','Legacy (Roboto)'))
+        self.mode_nord      = QRadioButton(self._t('mode_nord','Nord Minimalista'))
+        self.mode_retrowave = QRadioButton(self._t('mode_retrowave','Retrowave'))
         self.mode_normal.setChecked(True)
-        for r in (self.mode_normal, self.mode_minimal, self.mode_legacy):
-            bg_mode.addButton(r); r.toggled.connect(self._mark_dirty); mode_lay.addWidget(r)
+        mode_items = (self.mode_normal, self.mode_minimal, self.mode_legacy,
+                      self.mode_nord, self.mode_retrowave)
+        for i, r in enumerate(mode_items):
+            bg_mode.addButton(r); r.toggled.connect(self._mark_dirty)
+            mode_lay.addWidget(r, i // 3, i % 3)
         self._reg(lambda w=self.mode_normal:  w.setText(self._t('mode_normal','Normal (Fira Sans)')))
         self._reg(lambda w=self.mode_minimal: w.setText(self._t('mode_minimal','Minimal (solo reloj)')))
         self._reg(lambda w=self.mode_legacy:  w.setText(self._t('mode_legacy','Legacy (Roboto)')))
+        self._reg(lambda w=self.mode_nord:      w.setText(self._t('mode_nord','Nord Minimalista')))
+        self._reg(lambda w=self.mode_retrowave: w.setText(self._t('mode_retrowave','Retrowave')))
         fl_mode.addWidget(mode_wrap); lay.addWidget(fr_mode)
-        # switch_minimal mantenido por compatibilidad con save/load (oculto)
+
         self.switch_minimal = QCheckBox(); self.switch_minimal.setVisible(False)
+
+
+        fr_cl, fl_cl, lbl_cl = section_frame(self._t('conky_language','Idioma del Conky'))
+        self._reg(lambda w=lbl_cl: w.setText(self._t('conky_language','Idioma del Conky')))
+        lbl_cl_hint = QLabel(self._t('conky_language_hint',
+            'Idioma de los textos que se muestran en el widget de Conky (independiente del idioma de la app).'))
+        lbl_cl_hint.setObjectName("sec_sub"); lbl_cl_hint.setWordWrap(True)
+        self._reg(lambda w=lbl_cl_hint: w.setText(self._t('conky_language_hint',
+            'Idioma de los textos que se muestran en el widget de Conky (independiente del idioma de la app).')))
+        fl_cl.addWidget(lbl_cl_hint)
+        self.conky_lang_combo = QComboBox()
+        for i, (code, label) in enumerate(LANG_FLAGS.items()):
+            self.conky_lang_combo.addItem(label, code)
+            if code == 'en': self.conky_lang_combo.setCurrentIndex(i)
+        self.conky_lang_combo.currentIndexChanged.connect(self._mark_dirty)
+        fl_cl.addWidget(self.conky_lang_combo)
+        lay.addWidget(fr_cl)
 
         fr2, fl2, lbl2 = section_frame(self._t('monitor_head','Monitor (xinerama_head)'))
         self._reg(lambda w=lbl2: w.setText(self._t('monitor_head','Monitor (xinerama_head)')))
@@ -814,6 +1010,21 @@ class ConkymanApp(QMainWindow):
 
     def _page_ajustes(self):
         sc, _, lay = scrolled()
+
+        fr_lang, fl_lang, lbl_lang = section_frame(self._t('sec_language', 'Idioma de la aplicacion'))
+        self._reg(lambda w=lbl_lang: w.setText(self._t('sec_language', 'Idioma de la aplicacion')))
+        row_lang = QWidget(); row_lang.setStyleSheet("background: palette(alternate-base); border-radius:6px;")
+        rl_lang = QHBoxLayout(row_lang); rl_lang.setContentsMargins(12, 8, 12, 8); rl_lang.setSpacing(8)
+        lbl_lang_l = QLabel(self._t('language_label', 'Idioma'))
+        lbl_lang_l.setStyleSheet("font-size:11px; font-weight:bold; background:transparent;")
+        self._reg(lambda w=lbl_lang_l: w.setText(self._t('language_label', 'Idioma')))
+        self.btn_lang = QPushButton(LANG_FLAGS.get(self.translator.lang, self.translator.lang))
+        self.btn_lang.setObjectName("action_btn")
+        self.btn_lang.setCursor(Qt.PointingHandCursor)
+        self.btn_lang.clicked.connect(self.show_language_dialog)
+        rl_lang.addWidget(lbl_lang_l); rl_lang.addStretch(); rl_lang.addWidget(self.btn_lang)
+        fl_lang.addWidget(row_lang)
+        lay.addWidget(fr_lang)
 
         fr, flay, lbl_pos = section_frame(self._t('sec_position','Posicion y margenes'))
         self._reg(lambda w=lbl_pos: w.setText(self._t('sec_position','Posicion y margenes')))
@@ -1059,6 +1270,15 @@ class ConkymanApp(QMainWindow):
 
     def _page_tools(self):
         sc, _, lay = scrolled()
+
+        fr0, fl0, lbl_qa = section_frame(self._t('sec_quick_actions', 'Acciones rapidas'))
+        self._reg(lambda w=lbl_qa: w.setText(self._t('sec_quick_actions', 'Acciones rapidas')))
+        btn_restore = QPushButton(self._t('btn_restore', 'Restaurar valores predeterminados')); btn_restore.setObjectName("danger_btn")
+        btn_restore.clicked.connect(self.restore_defaults)
+        self._reg(lambda b=btn_restore: b.setText(self._t('btn_restore', 'Restaurar valores predeterminados')))
+        fl0.addWidget(btn_restore)
+        lay.addWidget(fr0)
+
         fr, flay, lbl_as2 = section_frame(self._t('sec_autostart','Inicio automatico con la sesion'))
         self._reg(lambda w=lbl_as2: w.setText(self._t('sec_autostart','Inicio automatico con la sesion')))
         lbl_as = QLabel(self._t('autostart_hint',"Crea o elimina el archivo .desktop en ~/.config/autostart\npara que Conky arranque automaticamente al iniciar sesion."))
@@ -1142,7 +1362,7 @@ class ConkymanApp(QMainWindow):
                 except Exception: pass
             self._status_lbl.setText(self._t('backups_cleared','Backups eliminados.'))
 
-    # ── Color helpers ──────────────────────────────────────────
+
     def _sync_color_visibility(self):
         cur = self._mode(); other = 'light' if cur == 'dark' else 'dark'
         for p in ('c1', 'c2'):
@@ -1202,10 +1422,10 @@ class ConkymanApp(QMainWindow):
         self._sync_color_visibility(); self._restore_color('c1'); self._restore_color('c2')
         self._mark_dirty()
 
-    # ── Fuentes ───────────────────────────────────────────────
+
     def _pick_font(self, which):
         cur = self._font_nums if which == 'nums' else self._font_txt
-        # PySide6: getFont devuelve (ok: bool, font: QFont)
+
         ok, f = QFontDialog.getFont(cur, self)
         if not ok or not isinstance(f, QFont): return
         if which == 'nums':
@@ -1216,28 +1436,78 @@ class ConkymanApp(QMainWindow):
             self.font_txt_btn.setText(f"{f.family()}, {f.pointSize()}pt")
         self._mark_dirty()
 
-    # ── Idioma ────────────────────────────────────────────────
-    def _on_lang(self, idx):
-        lang_id = self.lang_combo.itemData(idx)
+
+    def _on_lang(self, lang_id):
         if not lang_id or lang_id == self.translator.lang: return
         self.translator = Translator(lang_id)
         set_global_lang(lang_id)
+        if hasattr(self, 'btn_lang'):
+            self.btn_lang.setText(LANG_FLAGS.get(lang_id, lang_id))
         self._save_config(); self._retranslate()
 
-    # ── Acciones ──────────────────────────────────────────────
+    def show_language_dialog(self):
+        d = QDialog(self)
+        d.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint)
+        d.setAttribute(Qt.WA_TranslucentBackground)
+        d.setFixedWidth(220)
+
+        card = QWidget(d)
+        card.setObjectName("lang_popup")
+        card.setStyleSheet(
+            _themed_qss(self.palette()) +
+            "#lang_popup { background: palette(window);"
+            " border: 1px solid rgba(128,128,128,110); border-radius: 8px; }")
+
+        outer = QVBoxLayout(d)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(card)
+
+        bl = QVBoxLayout(card)
+        bl.setContentsMargins(6, 6, 6, 6)
+        bl.setSpacing(1)
+
+        cur = self.translator.lang
+        for code, label in LANG_FLAGS.items():
+            row_btn = QPushButton(label)
+            row_btn.setCheckable(True)
+            row_btn.setChecked(code == cur)
+            row_btn.setCursor(Qt.PointingHandCursor)
+            row_btn.setStyleSheet(
+                "QPushButton { text-align:left; padding:7px 10px; border:none; border-radius:6px;"
+                " background: transparent; font-size:12px; }"
+                "QPushButton:hover { background: palette(alternate-base); }"
+                "QPushButton:checked { background: palette(highlight); color: palette(highlighted-text); font-weight:bold; }")
+
+            def _pick(_checked=False, c=code, dlg=d):
+                self._on_lang(c)
+                dlg.accept()
+            row_btn.clicked.connect(_pick)
+            bl.addWidget(row_btn)
+
+        anchor = getattr(self, 'btn_lang', None)
+        if anchor is not None:
+            pos = anchor.mapToGlobal(QPoint(anchor.width() - d.width(), anchor.height() + 4))
+            d.move(pos)
+
+        d.exec()
+
+
+
     def show_about(self):
         d = QDialog(self)
         d.setWindowTitle(self._t("about_title", "Acerca de ConkyMan"))
         d.setFixedWidth(460)
-        d.setStyleSheet(QSS)
+        d.setStyleSheet(_themed_qss(self.palette()))
+
+        _C = build_about_colors()
 
         outer = QVBoxLayout(d)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        # ── Cabecera: logo + nombre + versión ─────────────────
+
         header = QWidget()
-        header.setStyleSheet("background: #1E1B2E;")
+        header.setStyleSheet(f"background: {_C['header_bg']};")
         hl = QVBoxLayout(header)
         hl.setContentsMargins(0, 24, 0, 20)
         hl.setSpacing(0)
@@ -1255,84 +1525,79 @@ class ConkymanApp(QMainWindow):
         lbl_name = QLabel("ConkyMan")
         lbl_name.setAlignment(Qt.AlignCenter)
         lbl_name.setStyleSheet(
-            "font-size:20px; font-weight:bold; color:#ffffff; background:transparent;")
+            f"font-size:20px; font-weight:bold; color:{_C['header_fg']}; background:transparent;")
         hl.addWidget(lbl_name)
 
-        lbl_ver = QLabel("v2.1  ·  CuerdOS")
+        lbl_ver = QLabel("© 2026 CuerdOS Project")
         lbl_ver.setAlignment(Qt.AlignCenter)
         lbl_ver.setStyleSheet(
-            "font-size:11px; color:#B39ECC; background:transparent; margin-top:1px;")
+            f"font-size:11px; color:{_C['header_sub']}; background:transparent; margin-top:1px;")
         hl.addWidget(lbl_ver)
 
         outer.addWidget(header)
         outer.addWidget(hsep())
 
-        # ── Cuerpo: filas de info ──────────────────────────────
+
         body = QWidget()
-        body.setStyleSheet("background:#242424;")
+        body.setStyleSheet("background:palette(window);")
         bl = QVBoxLayout(body)
         bl.setContentsMargins(28, 18, 28, 18)
         bl.setSpacing(0)
 
-        try:
-            conky_ver = subprocess.check_output(
-                ["conky", "--version"], stderr=subprocess.STDOUT,
-                text=True).split("\n")[0].strip()[:48]
-        except Exception:
-            conky_ver = self._t("conky_not_found", "No encontrado")
-
         rows = [
-            (self._t("about_version",  "Versión"),   "2.1"),
+            (self._t("about_version",  "Versión"),   "2.2-lts"),
             (self._t("about_license",  "Licencia"),  "GNU GPL v3.0"),
-            (self._t("about_authors",  "Autores"),   "CuerdOS Team"),
-            (self._t("about_requires", "Requiere"),  "Python 3.9+  ·  PySide6"),
-            (self._t("about_conky",    "Conky"),      conky_ver),
+            (self._t("about_authors",  "Autores"),   "CuerdOS Dev. Team"),
         ]
 
         for i, (label, value) in enumerate(rows):
             row_w = QWidget()
             row_w.setStyleSheet(
-                "background:#2a2a2a; border-radius:6px;"
+                f"background:{_C['row_alt']}; border-radius:6px;"
                 if i % 2 == 0 else
-                "background:#242424;")
+                "background:transparent;")
             rl = QHBoxLayout(row_w)
             rl.setContentsMargins(12, 8, 12, 8)
             rl.setSpacing(8)
             lbl_l = QLabel(label)
             lbl_l.setStyleSheet(
-                "color:#a3a0b0; font-size:11px; font-weight:bold;"
+                f"color:{_C['accent']}; font-size:11px; font-weight:bold;"
                 " min-width:90px; background:transparent;")
             lbl_v = QLabel(value)
             lbl_v.setStyleSheet(
-                "color:#d0d0d0; font-size:11px; background:transparent;")
+                f"color:{_C['text']}; font-size:11px; background:transparent;")
             lbl_v.setWordWrap(True)
             rl.addWidget(lbl_l)
             rl.addWidget(lbl_v, 1)
             bl.addWidget(row_w)
 
-        # Descripción al pie del cuerpo
+
         bl.addSpacing(12)
         lbl_desc = QLabel(self._t("about_comments", "Gestor de configuracion para Conky."))
         lbl_desc.setAlignment(Qt.AlignCenter)
         lbl_desc.setStyleSheet(
-            "color:#585858; font-size:11px; font-style:italic; background:transparent;")
+            f"color:{_C['text_dim']}; font-size:11px; font-style:italic; background:transparent;")
         bl.addWidget(lbl_desc)
 
         outer.addWidget(body)
         outer.addWidget(hsep())
 
-        # ── Footer ─────────────────────────────────────────────
+
         footer_w = QWidget()
         footer_w.setFixedHeight(52)
-        footer_w.setStyleSheet("background:#1e1e1e;")
+        footer_w.setStyleSheet(f"background:{_C['footer_bg']};")
         fl = QHBoxLayout(footer_w)
         fl.setContentsMargins(24, 0, 24, 0)
         fl.setSpacing(8)
         fl.addStretch()
 
-        btn_web = QPushButton(self._t("visit_website", "Visitar pagina web"))
-        btn_web.setObjectName("action_btn")
+        btn_web = QPushButton(self._t("visit_website", "Página web"))
         btn_web.setCursor(Qt.PointingHandCursor)
+        btn_web.setStyleSheet(
+            f"QPushButton {{ background: {_C['btn_accent_bg']}; color:{_C['btn_accent_fg']};"
+            f" border: 1px solid {_C['btn_accent_br']}; border-radius: 6px; padding: 6px 16px; }}"
+            f"QPushButton:hover {{ background: {_C['btn_accent_hov']}; }}"
+            f"QPushButton:pressed {{ background: {_C['btn_accent_hov']}; }}")
         btn_web.clicked.connect(
             lambda: QDesktopServices.openUrl(QUrl("https://cuerdos.github.io")))
 
@@ -1362,7 +1627,10 @@ class ConkymanApp(QMainWindow):
             self._t('restore_defaults_q','Restaurar configuracion predeterminada?'),
             QMessageBox.Yes | QMessageBox.No)
         if r != QMessageBox.Yes: return
-        self._write_conky(DEFAULT_CONKY_LUA)
+        if hasattr(self, 'conky_lang_combo'):
+            idx = self.conky_lang_combo.findData('en')
+            if idx >= 0: self.conky_lang_combo.setCurrentIndex(idx)
+        self._write_conky(self._apply_conky_lang(DEFAULT_CONKY_LUA))
         self.pos_tr.setChecked(True); self.mode_dark.setChecked(True)
         self._font_nums = QFont("Fira Sans", 55); self.font_nums_btn.setText("Fira Sans, 55pt")
         self._font_txt = QFont("Fira Sans Medium", 13); self.font_txt_btn.setText("Fira Sans Medium, 13pt")
@@ -1376,7 +1644,7 @@ class ConkymanApp(QMainWindow):
         self._sync_color_visibility(); self._restore_color('c1'); self._restore_color('c2')
         self._save_config(); self.restart_conky(); self._mark_clean()
 
-    # ── Confirmación de cambios sin aplicar ───────────────────
+
     def _ask_unsaved(self):
         """
         Si hay cambios sin aplicar, pregunta al usuario qué hacer.
@@ -1403,9 +1671,9 @@ class ConkymanApp(QMainWindow):
             self._mark_clean()
             return True
         else:
-            return False   # cancelar
+            return False
 
-    # ── Conky files ───────────────────────────────────────────
+
     def _write_conky(self, content):
         d = os.path.join(os.path.expanduser("~"), ".config", "conky")
         os.makedirs(d, exist_ok=True)
@@ -1425,7 +1693,7 @@ class ConkymanApp(QMainWindow):
                 print(f"[ConkyMan] {fname}: {e}")
         self.conkyrc_path = os.path.join(d, "conky.lua")
 
-    # ── Aplicar ───────────────────────────────────────────────
+
     def _start_apply(self):
         self.btn_apply.setEnabled(False)
         self._status_lbl.setText(self._t('applying','Aplicando...'))
@@ -1450,6 +1718,10 @@ class ConkymanApp(QMainWindow):
                 content = LEGACY_CONKY_LUA
             elif hasattr(self, 'mode_minimal') and self.mode_minimal.isChecked():
                 content = MINIMAL_CONKY_LUA
+            elif hasattr(self, 'mode_nord') and self.mode_nord.isChecked():
+                content = NORD_CONKY_LUA
+            elif hasattr(self, 'mode_retrowave') and self.mode_retrowave.isChecked():
+                content = RETROWAVE_CONKY_LUA
             else:
                 content = DEFAULT_CONKY_LUA
             base_color = "F5F5F5" if self.mode_dark.isChecked() else "2C3E50"
@@ -1479,7 +1751,7 @@ class ConkymanApp(QMainWindow):
             c1 = self._color_bare('c1'); c2 = self._color_bare('c2')
             content = re.sub(r"color1\s*=\s*'[^']*'", f"color1 = '{c1}'", content)
             content = re.sub(r"color2\s*=\s*'[^']*'", f"color2 = '{c2}'", content)
-            # Actualizar colores de gráficos para que coincidan con c2
+
             content = re.sub(r"(cpu|mem|swap|disk)graph \d+,\d+ [0-9A-Fa-f]+ [0-9A-Fa-f]+",
                              lambda m: f"{m.group().split()[0].split('graph')[0]}graph "
                                        f"{m.group().split()[1]} 5B8080 {c2}", content)
@@ -1503,9 +1775,20 @@ class ConkymanApp(QMainWindow):
             content = re.sub(r"minimum_width\s*=\s*\d+",  f"minimum_width = {mw}",  content)
             content = re.sub(r"minimum_height\s*=\s*\d+", f"minimum_height = {mh}", content)
 
+            content = self._apply_conky_lang(content)
+
             return True, content
         except Exception as e:
             import traceback; traceback.print_exc(); return False, str(e)
+
+    def _apply_conky_lang(self, content):
+        lang = 'en'
+        if hasattr(self, 'conky_lang_combo'):
+            lang = self.conky_lang_combo.currentData() or 'en'
+        labels = CONKY_LABELS.get(lang, CONKY_LABELS['en'])
+        for key, token in CONKY_LABEL_TOKENS.items():
+            content = content.replace(token, labels.get(key, CONKY_LABELS['en'][key]))
+        return content
 
     def _apply_logic(self):
         ok, result = self._build_content()
@@ -1514,7 +1797,7 @@ class ConkymanApp(QMainWindow):
         os.system("killall -SIGUSR1 conky 2>/dev/null")
         return True, self._t('changes_applied','Cambios aplicados.')
 
-    # ── Config ────────────────────────────────────────────────
+
     def _save_config(self):
         cfg = configparser.ConfigParser()
         cfg['General'] = {'language': self.translator.lang}
@@ -1545,13 +1828,20 @@ class ConkymanApp(QMainWindow):
             template = 'legacy'
         elif hasattr(self,'mode_minimal') and self.mode_minimal.isChecked():
             template = 'minimal'
+        elif hasattr(self,'mode_nord') and self.mode_nord.isChecked():
+            template = 'nord'
+        elif hasattr(self,'mode_retrowave') and self.mode_retrowave.isChecked():
+            template = 'retrowave'
         else:
             template = 'normal'
+        conky_lang = (self.conky_lang_combo.currentData() or 'en') \
+                     if hasattr(self, 'conky_lang_combo') else 'en'
         cfg['System'] = {
             'template':    template,
             'time_format': '12'  if self.time_12.isChecked() else '24',
             'type':        ct,
             'xinerama':    self.xinerama_combo.currentData() or '0',
+            'conky_lang':  conky_lang,
         }
         cfg['Ajustes'] = {
             'gap_x':    str(self.gap_x_spin.value()),
@@ -1592,12 +1882,18 @@ class ConkymanApp(QMainWindow):
                 tmpl = s.get('template', s.get('minimal','no'))
                 if tmpl == 'legacy'  and hasattr(self,'mode_legacy'):  self.mode_legacy.setChecked(True)
                 elif tmpl in ('yes','minimal') and hasattr(self,'mode_minimal'): self.mode_minimal.setChecked(True)
+                elif tmpl == 'nord' and hasattr(self,'mode_nord'): self.mode_nord.setChecked(True)
+                elif tmpl == 'retrowave' and hasattr(self,'mode_retrowave'): self.mode_retrowave.setChecked(True)
                 if s.get('time_format') == '12': self.time_12.setChecked(True)
                 ct = s.get('type', 'type_norm')
                 if hasattr(self, ct): getattr(self, ct).setChecked(True)
                 xi = s.get('xinerama', '0')
                 idx = self.xinerama_combo.findData(xi)
                 if idx >= 0: self.xinerama_combo.setCurrentIndex(idx)
+                if hasattr(self, 'conky_lang_combo'):
+                    cl = s.get('conky_lang', 'en')
+                    idx = self.conky_lang_combo.findData(cl)
+                    if idx >= 0: self.conky_lang_combo.setCurrentIndex(idx)
             if 'Ajustes' in cfg:
                 aj = cfg['Ajustes']
                 self.gap_x_spin.setValue(int(aj.get('gap_x', 20)))
@@ -1607,7 +1903,7 @@ class ConkymanApp(QMainWindow):
                 self.min_h_spin.setValue(int(aj.get('min_h', 400)))
         except Exception as e:
             import traceback; print(f"[ConkyMan] load_config: {e}"); traceback.print_exc()
-        # load_config no marca dirty
+
         self._mark_clean()
 
     def closeEvent(self, event):
@@ -1619,5 +1915,7 @@ class ConkymanApp(QMainWindow):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
+    app.setApplicationName(APP_NAME)
+    app.setDesktopFileName(APP_ID)  # mismo app id que el editor Lua (GTK)
     w = ConkymanApp(); w.showMaximized()
     sys.exit(app.exec())
