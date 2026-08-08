@@ -1,69 +1,231 @@
 #!/usr/bin/env python3
-"""ConkyMan — Editor de texto manual para configuraciones de Conky."""
+"""ConkyMan - Editor Lua para archivos de configuracion de Conky (PySide6)."""
 
-import gi
-import sys
 import os
+import sys
 import configparser
 
-gi.require_version("Gtk", "3.0")
-gi.require_version("Pango", "1.0")
-from gi.repository import Gtk, Pango, Gdk, GLib
+from PySide6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QPlainTextEdit, QTextEdit, QPushButton, QLabel, QLineEdit, QMessageBox,
+)
+from PySide6.QtGui import (
+    QIcon, QColor, QFont, QPainter, QTextCharFormat, QSyntaxHighlighter,
+    QTextCursor, QKeySequence, QTextFormat, QShortcut, QPalette,
+)
+from PySide6.QtCore import Qt, QRect, QSize, QRegularExpression
 
-# ─────────────────────────────────────────────────────────────
-# TRADUCCIONES
-# ─────────────────────────────────────────────────────────────
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-try:
-    from translations import Translator
+from translations import Translator
+from app_identity import APP_ID, APP_NAME, install_icon_theme
+from conkyman import _svg_render, _themed_icon, _themed_qss, QSS, hsep
 
-    def _load_saved_lang():
-        cfg_file = os.path.join(
-            os.path.expanduser("~"), ".config", "conkyman", "conkyman.conf")
-        if os.path.exists(cfg_file):
-            cfg = configparser.ConfigParser()
-            cfg.read(cfg_file)
-            return cfg.get('General', 'language', fallback=None)
-        return None
+APP_VERSION = "2.2-lts"
 
-    _tr = Translator(_load_saved_lang())
-    def t(key, default=None):
-        return _tr.get(key, default or key)
-
-except ImportError:
-    def t(key, default=None):  # pylint: disable=unused-argument
-        return default or key
+# Estilos propios del editor, añadidos al QSS compartido con la ventana principal.
+EDITOR_QSS = """
+QPushButton#tool_btn:checked { background: palette(highlight); color: palette(highlighted-text); }
+QPlainTextEdit#code_edit {
+    background: palette(base); color: palette(text);
+    border: 1px solid __SEP__; border-radius: 8px;
+    font-family: monospace; font-size: 11px; padding: 4px;
+}
+QWidget#gutter { background: palette(base); }
+"""
 
 
-# ─────────────────────────────────────────────────────────────
-# EDITOR
-# ─────────────────────────────────────────────────────────────
-class ConkyEditor(Gtk.Window):
+def _load_saved_lang():
+    cfg_file = os.path.join(os.path.expanduser("~"), ".config", "conkyman", "conkyman.conf")
+    if os.path.exists(cfg_file):
+        cfg = configparser.ConfigParser()
+        cfg.read(cfg_file)
+        return cfg.get("General", "language", fallback=None)
+    return None
+
+
+_tr = Translator(_load_saved_lang())
+
+
+def t(key, default=None):
+    return _tr.get(key, default or key)
+
+
+# ---- Resaltado de sintaxis Lua ----
+
+LUA_KEYWORDS = (
+    "and", "break", "do", "else", "elseif", "end", "false", "for",
+    "function", "goto", "if", "in", "local", "nil", "not", "or",
+    "repeat", "return", "then", "true", "until", "while",
+)
+
+LUA_BUILTINS = (
+    "conky", "config", "text", "print", "pairs", "ipairs", "table",
+    "string", "math", "os", "io", "tostring", "tonumber", "require",
+)
+
+
+class LuaHighlighter(QSyntaxHighlighter):
+    """Resalta sintaxis Lua: keywords, builtins, strings, numeros y comentarios."""
+
+    def __init__(self, document):
+        super().__init__(document)
+        self._rules = []
+
+        def fmt(color, bold=False):
+            f = QTextCharFormat()
+            f.setForeground(QColor(color))
+            if bold:
+                f.setFontWeight(QFont.Bold)
+            return f
+
+        kw_pattern = r"\b(?:%s)\b" % "|".join(LUA_KEYWORDS)
+        bi_pattern = r"\b(?:%s)\b" % "|".join(LUA_BUILTINS)
+        self._rules.append((QRegularExpression(kw_pattern), fmt("#C586C0", bold=True)))
+        self._rules.append((QRegularExpression(bi_pattern), fmt("#4FC1FF")))
+        self._rules.append((QRegularExpression(r"\b\d+\.?\d*\b"), fmt("#B5CEA8")))
+        self._rules.append((QRegularExpression(r'"(?:\\.|[^"\\])*"'), fmt("#CE9178")))
+        self._rules.append((QRegularExpression(r"'(?:\\.|[^'\\])*'"), fmt("#CE9178")))
+        self._rules.append((QRegularExpression(r"--(?!\[\[).*"), fmt("#6A9955")))
+
+        self._block_start = QRegularExpression(r"--\[\[")
+        self._block_end = QRegularExpression(r"\]\]")
+        self._block_fmt = fmt("#6A9955")
+
+    def highlightBlock(self, text):
+        for pattern, fmt_ in self._rules:
+            it = pattern.globalMatch(text)
+            while it.hasNext():
+                m = it.next()
+                self.setFormat(m.capturedStart(), m.capturedLength(), fmt_)
+
+        self.setCurrentBlockState(0)
+        start = 0
+        if self.previousBlockState() != 1:
+            m = self._block_start.match(text)
+            start = m.capturedStart() if m.hasMatch() else -1
+        while start >= 0:
+            m_end = self._block_end.match(text, start)
+            if m_end.hasMatch():
+                length = m_end.capturedEnd() - start
+            else:
+                self.setCurrentBlockState(1)
+                length = len(text) - start
+            self.setFormat(start, length, self._block_fmt)
+            m = self._block_start.match(text, start + max(length, 1))
+            start = m.capturedStart() if m.hasMatch() else -1
+
+
+# ---- Gutter de numeros de linea ----
+
+class LineNumberArea(QWidget):
+    def __init__(self, editor):
+        super().__init__(editor)
+        self.setObjectName("gutter")
+        self._editor = editor
+
+    def sizeHint(self):
+        return QSize(self._editor.line_number_area_width(), 0)
+
+    def paintEvent(self, event):
+        self._editor.paint_line_numbers(event)
+
+
+class CodeEditor(QPlainTextEdit):
+    """QPlainTextEdit con numeracion de lineas y resaltado de la linea actual."""
+
+    def __init__(self):
+        super().__init__()
+        self.setObjectName("code_edit")
+        self.setFont(QFont("Monospace", 11))
+        self.setLineWrapMode(QPlainTextEdit.NoWrap)
+        self.gutter = LineNumberArea(self)
+
+        self.blockCountChanged.connect(self._update_gutter_width)
+        self.updateRequest.connect(self._update_gutter)
+        self.cursorPositionChanged.connect(self.highlight_current_line)
+
+        self._update_gutter_width()
+        self.highlight_current_line()
+
+    def line_number_area_width(self):
+        digits = max(2, len(str(max(1, self.blockCount()))))
+        return 12 + self.fontMetrics().horizontalAdvance("9") * digits
+
+    def _update_gutter_width(self):
+        self.setViewportMargins(self.line_number_area_width(), 0, 0, 0)
+
+    def _update_gutter(self, rect, dy):
+        if dy:
+            self.gutter.scroll(0, dy)
+        else:
+            self.gutter.update(0, rect.y(), self.gutter.width(), rect.height())
+        if rect.contains(self.viewport().rect()):
+            self._update_gutter_width()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        cr = self.contentsRect()
+        self.gutter.setGeometry(QRect(cr.left(), cr.top(), self.line_number_area_width(), cr.height()))
+
+    def paint_line_numbers(self, event):
+        painter = QPainter(self.gutter)
+        muted = self.palette().color(QPalette.WindowText)
+        muted.setAlpha(140)
+        painter.fillRect(event.rect(), self.palette().base())
+
+        block = self.firstVisibleBlock()
+        block_number = block.blockNumber()
+        top = self.blockBoundingGeometry(block).translated(self.contentOffset()).top()
+        bottom = top + self.blockBoundingRect(block).height()
+
+        while block.isValid() and top <= event.rect().bottom():
+            if block.isVisible() and bottom >= event.rect().top():
+                painter.setPen(muted)
+                painter.drawText(0, int(top), self.gutter.width() - 8, self.fontMetrics().height(),
+                                  Qt.AlignRight, str(block_number + 1))
+            block = block.next()
+            top = bottom
+            bottom = top + self.blockBoundingRect(block).height()
+            block_number += 1
+
+    def highlight_current_line(self):
+        selection = QTextEdit.ExtraSelection()
+        color = self.palette().alternateBase().color()
+        selection.format.setBackground(color)
+        selection.format.setProperty(QTextFormat.FullWidthSelection, True)
+        selection.cursor = self.textCursor()
+        selection.cursor.clearSelection()
+        self.setExtraSelections([selection])
+
+
+# ---- Ventana principal del editor ----
+
+class ConkyEditor(QMainWindow):
 
     def __init__(self, file_path=None):
-        super().__init__(title=t('editor_title', 'Editor de Configuración - ConkyMan'))
-        self.set_default_size(700, 600)
-        self.set_position(Gtk.WindowPosition.CENTER)
+        super().__init__()
+        self.resize(820, 640)
 
+        self.base_path = os.path.dirname(os.path.abspath(__file__))
         self.file_path = (
             file_path if file_path and os.path.exists(file_path)
             else self._detect_conky_path()
         )
+        self._dirty = False
 
-        # ── Intentar cargar icono ─────────────────
-        base = os.path.dirname(os.path.abspath(__file__))
-        logo = os.path.join(base, "conkyman.svg")
-        try:
-            self.set_icon_from_file(logo)
-        except Exception:  # pylint: disable=broad-except
-            pass
+        install_icon_theme(os.path.join(self.base_path, "conkyman.svg"))
+        logo_px = _svg_render(os.path.join(self.base_path, "conkyman.svg"), 32)
+        if not logo_px.isNull():
+            self.setWindowIcon(QIcon(logo_px))
+
+        self.setStyleSheet(_themed_qss(self.palette()) + EDITOR_QSS)
 
         self._build_ui()
         self._load_file_content()
+        self._update_title()
 
-    # ─────────────────────────────────────────────
-    # DETECCIÓN DE RUTA
-    # ─────────────────────────────────────────────
+    # -- Deteccion de ruta --
+
     def _detect_conky_path(self):
         home = os.path.expanduser("~")
         candidates = [
@@ -71,214 +233,163 @@ class ConkyEditor(Gtk.Window):
             os.path.join(home, ".config", "conky", "conky.conf"),
             os.path.join(home, ".conkyrc"),
         ]
-        for p in candidates:
-            if os.path.exists(p):
-                return p
+        for path in candidates:
+            if os.path.exists(path):
+                return path
         return candidates[0]
 
-    # ─────────────────────────────────────────────
-    # CONSTRUCCIÓN DE LA UI
-    # ─────────────────────────────────────────────
+    # -- Construccion de la interfaz --
+
     def _build_ui(self):
-        # Título nativo (barra del gestor de ventanas)
-        fname = os.path.basename(self.file_path) if self.file_path else t('file_not_found', 'Archivo no encontrado')
-        self.set_title(f"{t('manual_editor', 'Editor Manual')} — {fname}")
+        central = QWidget()
+        self.setCentralWidget(central)
+        root = QVBoxLayout(central)
+        root.setContentsMargins(12, 12, 12, 12)
+        root.setSpacing(8)
 
-        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-        self.add(vbox)
+        root.addWidget(self._build_toolbar())
+        self.find_bar = self._build_find_bar()
+        root.addWidget(self.find_bar)
+        self.find_bar.hide()
+        root.addWidget(self._build_editor())
+        root.addWidget(self._build_statusbar())
 
-        # ══════════════════════════════════════════
-        # TOOLBAR
-        # ══════════════════════════════════════════
-        toolbar = Gtk.Toolbar()
-        toolbar.set_style(Gtk.ToolbarStyle.ICONS)
-        toolbar.get_style_context().add_class(Gtk.STYLE_CLASS_PRIMARY_TOOLBAR)
-        vbox.pack_start(toolbar, False, False, 0)
+        QShortcut(QKeySequence("Ctrl+F"), self, activated=self._toggle_find_bar)
+        QShortcut(QKeySequence("Ctrl+S"), self, activated=self._on_save)
+        QShortcut(QKeySequence("Escape"), self, activated=self._hide_find_bar)
 
-        def _tbtn(icon, tip, cb):
-            btn = Gtk.ToolButton()
-            btn.set_icon_widget(Gtk.Image.new_from_icon_name(icon, Gtk.IconSize.LARGE_TOOLBAR))
-            btn.set_tooltip_text(tip)
-            btn.connect("clicked", cb)
-            toolbar.insert(btn, -1)
+    def _build_toolbar(self):
+        bar = QWidget()
+        lay = QHBoxLayout(bar)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(4)
+
+        def tool_btn(icon_name, tooltip, checkable=False):
+            btn = QPushButton()
+            btn.setObjectName("tool_btn")
+            btn.setIcon(_themed_icon(icon_name, 16, "#dddddd"))
+            btn.setToolTip(tooltip)
+            btn.setCheckable(checkable)
+            btn.setCursor(Qt.PointingHandCursor)
+            lay.addWidget(btn)
             return btn
 
-        def _sep(expand=False, draw=True):
-            s = Gtk.SeparatorToolItem()
-            s.set_expand(expand)
-            s.set_draw(draw)
-            toolbar.insert(s, -1)
+        self.btn_save = tool_btn("document-save", t("save_changes", "Guardar cambios"))
+        self.btn_save.clicked.connect(self._on_save)
 
-        # Guardar
-        _tbtn("document-save-symbolic",
-              t('save_changes', 'Guardar cambios'),
-              self._on_save)
+        self.btn_reload = tool_btn("document-revert", t("reload_file", "Recargar archivo"))
+        self.btn_reload.clicked.connect(self._on_reload)
 
-        _sep()
+        self.btn_find = tool_btn("edit-find-replace", t("find_replace", "Buscar y reemplazar"), checkable=True)
+        self.btn_find.toggled.connect(self._on_find_toggled)
 
-        # Recargar
-        _tbtn("document-revert-symbolic",
-              t('reload_file', 'Recargar archivo'),
-              self._on_reload)
+        self.btn_wrap = tool_btn("format-justify-left", t("word_wrap", "Ajuste de linea"), checkable=True)
+        self.btn_wrap.toggled.connect(self._on_wrap_toggled)
 
-        _sep()
+        lay.addStretch(1)
 
-        # Buscar/Reemplazar (toggle)
-        self.tbtn_find = Gtk.ToggleToolButton()
-        self.tbtn_find.set_icon_widget(
-            Gtk.Image.new_from_icon_name("edit-find-replace-symbolic", Gtk.IconSize.LARGE_TOOLBAR))
-        self.tbtn_find.set_tooltip_text(t('find_replace', 'Buscar y Reemplazar'))
-        self.tbtn_find.connect("toggled", self._on_find_toggled)
-        toolbar.insert(self.tbtn_find, -1)
+        self.lbl_path = QLabel(self.file_path or "")
+        self.lbl_path.setObjectName("mono")
+        lay.addWidget(self.lbl_path)
 
-        _sep()
+        return bar
 
-        # Word wrap (toggle)
-        self.tbtn_wrap = Gtk.ToggleToolButton()
-        self.tbtn_wrap.set_icon_widget(
-            Gtk.Image.new_from_icon_name("format-justify-left-symbolic", Gtk.IconSize.LARGE_TOOLBAR))
-        self.tbtn_wrap.set_tooltip_text(t('word_wrap', 'Ajuste de línea'))
-        self.tbtn_wrap.set_active(False)
-        self.tbtn_wrap.connect("toggled", self._on_wrap_toggled)
-        toolbar.insert(self.tbtn_wrap, -1)
+    def _build_find_bar(self):
+        bar = QWidget()
+        lay = QHBoxLayout(bar)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(6)
 
-        # Separador expandible → empuja el label de ruta a la derecha
-        _sep(expand=True, draw=False)
+        self.entry_find = QLineEdit()
+        self.entry_find.setPlaceholderText(t("find_placeholder", "Buscar..."))
+        self.entry_find.setFixedWidth(200)
+        self.entry_find.returnPressed.connect(self._find_next)
+        self.entry_find.textChanged.connect(self._highlight_all)
+        lay.addWidget(self.entry_find)
 
-        # Label con ruta del archivo (derecha)
-        self.lbl_path = Gtk.Label()
-        self.lbl_path.set_ellipsize(Pango.EllipsizeMode.START)
-        self.lbl_path.set_max_width_chars(40)
-        self.lbl_path.set_markup(
-            f"<small><span foreground='#888888'>{self.file_path or ''}</span></small>")
-        path_item = Gtk.ToolItem()
-        path_item.add(self.lbl_path)
-        toolbar.insert(path_item, -1)
+        self.entry_replace = QLineEdit()
+        self.entry_replace.setPlaceholderText(t("replace_placeholder", "Reemplazar por..."))
+        self.entry_replace.setFixedWidth(200)
+        lay.addWidget(self.entry_replace)
 
-        _sep(draw=False)  # pequeño margen derecho
+        btn_replace = QPushButton(t("replace_one", "Reemplazar"))
+        btn_replace.setObjectName("action_btn")
+        btn_replace.clicked.connect(self._on_replace_one)
+        lay.addWidget(btn_replace)
 
-        # ══════════════════════════════════════════
-        # BARRA DE BUSCAR / REEMPLAZAR (oculta al inicio)
-        # ══════════════════════════════════════════
-        self.find_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        self.find_bar.set_margin_start(8)
-        self.find_bar.set_margin_end(8)
-        self.find_bar.set_margin_top(4)
-        self.find_bar.set_margin_bottom(4)
+        btn_replace_all = QPushButton(t("replace_all", "Reemplazar todo"))
+        btn_replace_all.setObjectName("action_btn")
+        btn_replace_all.clicked.connect(self._on_replace_all)
+        lay.addWidget(btn_replace_all)
 
-        self.entry_find = Gtk.SearchEntry()
-        self.entry_find.set_placeholder_text(t('find_placeholder', 'Buscar...'))
-        self.entry_find.set_size_request(180, -1)
-        self.entry_find.connect("activate",       self._on_find_next)
-        self.entry_find.connect("search-changed", self._on_search_changed)
-        self.find_bar.pack_start(self.entry_find, False, False, 0)
+        self.lbl_find_status = QLabel()
+        self.lbl_find_status.setObjectName("sec_sub")
+        lay.addWidget(self.lbl_find_status)
 
-        self.entry_replace = Gtk.Entry()
-        self.entry_replace.set_placeholder_text(t('replace_placeholder', 'Reemplazar por...'))
-        self.entry_replace.set_size_request(180, -1)
-        self.find_bar.pack_start(self.entry_replace, False, False, 0)
+        lay.addStretch(1)
 
-        btn_replace = Gtk.Button(label=t('replace_one', 'Reemplazar'))
-        btn_replace.connect("clicked", self._on_replace_one)
-        self.find_bar.pack_start(btn_replace, False, False, 0)
+        btn_close = QPushButton(t("close", "Cerrar"))
+        btn_close.setObjectName("tool_btn")
+        btn_close.clicked.connect(lambda: self.btn_find.setChecked(False))
+        lay.addWidget(btn_close)
 
-        btn_replace_all = Gtk.Button(label=t('replace_all', 'Reemplazar todo'))
-        btn_replace_all.connect("clicked", self._on_replace_all)
-        self.find_bar.pack_start(btn_replace_all, False, False, 0)
+        return bar
 
-        self.lbl_find_status = Gtk.Label()
-        self.lbl_find_status.set_margin_start(8)
-        self.find_bar.pack_start(self.lbl_find_status, False, False, 0)
+    def _build_editor(self):
+        self.text_edit = CodeEditor()
+        self.highlighter = LuaHighlighter(self.text_edit.document())
+        self.text_edit.textChanged.connect(self._on_text_changed)
+        self.text_edit.cursorPositionChanged.connect(self._update_status)
+        return self.text_edit
 
-        # Botón cerrar la barra de búsqueda
-        btn_close_find = Gtk.Button()
-        btn_close_find.set_relief(Gtk.ReliefStyle.NONE)
-        btn_close_find.set_image(
-            Gtk.Image.new_from_icon_name("window-close-symbolic", Gtk.IconSize.MENU))
-        btn_close_find.set_tooltip_text(t('close', 'Cerrar'))
-        btn_close_find.connect("clicked", lambda _b: self._hide_find_bar())
-        self.find_bar.pack_end(btn_close_find, False, False, 0)
+    def _build_statusbar(self):
+        box = QWidget()
+        outer = QVBoxLayout(box)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(6)
+        outer.addWidget(hsep())
 
-        vbox.pack_start(self.find_bar, False, False, 0)
-        # Oculta por defecto (no show_all en find_bar todavía)
+        row = QWidget()
+        lay = QHBoxLayout(row)
+        lay.setContentsMargins(0, 0, 0, 0)
 
-        # ══════════════════════════════════════════
-        # ÁREA DE TEXTO
-        # ══════════════════════════════════════════
-        self.text_view = Gtk.TextView()
-        self.text_view.set_left_margin(10)
-        self.text_view.set_right_margin(10)
-        self.text_view.set_top_margin(10)
-        self.text_view.set_bottom_margin(10)
-        self.text_view.set_wrap_mode(Gtk.WrapMode.NONE)
-        self.text_view.modify_font(Pango.FontDescription("Monospace 11"))
+        self.lbl_status = QLabel()
+        self.lbl_status.setObjectName("sec_sub")
+        lay.addWidget(self.lbl_status)
+        lay.addStretch(1)
 
-        # Colorear fondo de búsqueda
-        self._tag_found = self.text_view.get_buffer().create_tag(
-            "found", background="#FFFF00", foreground="#000000")
-        self._tag_current = self.text_view.get_buffer().create_tag(
-            "current", background="#FF8C00", foreground="#FFFFFF")
+        lbl_version = QLabel(f"ConkyMan {APP_VERSION}")
+        lbl_version.setObjectName("ver_lbl")
+        lay.addWidget(lbl_version)
 
-        # Seguimiento de cursor para statusbar
-        self.text_view.get_buffer().connect("mark-set", self._on_cursor_moved)
+        outer.addWidget(row)
+        return box
 
-        scrolled = Gtk.ScrolledWindow()
-        scrolled.set_hexpand(True)
-        scrolled.set_vexpand(True)
-        scrolled.add(self.text_view)
-        vbox.pack_start(scrolled, True, True, 0)
+    # -- Carga y guardado --
 
-        # ══════════════════════════════════════════
-        # BARRA DE ESTADO
-        # ══════════════════════════════════════════
-        sep_status = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        vbox.pack_start(sep_status, False, False, 0)
-
-        self.statusbar = Gtk.Label()
-        self.statusbar.set_xalign(0)
-        self.statusbar.set_margin_start(8)
-        self.statusbar.set_margin_top(3)
-        self.statusbar.set_margin_bottom(3)
-        self.statusbar.set_markup("<small> </small>")
-        vbox.pack_start(self.statusbar, False, False, 0)
-
-        # Teclas de acceso rápido
-        self.connect("key-press-event", self._on_key_press)
-
-        self._update_statusbar()
-
-    # ─────────────────────────────────────────────
-    # CARGA Y GUARDADO
-    # ─────────────────────────────────────────────
     def _load_file_content(self):
         if not self.file_path or not os.path.exists(self.file_path):
+            self._update_status()
             return
         try:
             with open(self.file_path, "r", encoding="utf-8") as f:
                 content = f.read()
-            self.text_view.get_buffer().set_text(content)
-            self._update_statusbar()
-        except Exception as e:  # pylint: disable=broad-except
-            self._show_msg(f"{t('read_error', 'Error al leer')}: {e}", Gtk.MessageType.ERROR)
+            self.text_edit.blockSignals(True)
+            self.text_edit.setPlainText(content)
+            self.text_edit.blockSignals(False)
+            self._mark_clean()
+            self._update_status()
+        except Exception as e:
+            self._show_msg(f"{t('read_error', 'Error al leer')}: {e}", QMessageBox.Critical)
 
-    def _on_reload(self, _btn):  # pylint: disable=unused-argument
-        """Recarga el archivo desde disco, descartando cambios no guardados."""
-        dlg = Gtk.MessageDialog(
-            transient_for=self,
-            message_type=Gtk.MessageType.QUESTION,
-            buttons=Gtk.ButtonsType.YES_NO,
-            text=t('editor_conkyman', 'Editor ConkyMan'),
-        )
-        dlg.format_secondary_text(
-            t('reload_confirm', '¿Recargar el archivo y descartar los cambios no guardados?'))
-        if dlg.run() == Gtk.ResponseType.YES:
-            self._load_file_content()
-        dlg.destroy()
+    def _on_reload(self):
+        if self._dirty and not self._confirm(
+                t("reload_confirm", "Recargar el archivo y descartar los cambios no guardados?")):
+            return
+        self._load_file_content()
 
-    def _on_save(self, _btn):  # pylint: disable=unused-argument
-        buf = self.text_view.get_buffer()
-        start, end = buf.get_bounds()
-        text = buf.get_text(start, end, True)
+    def _on_save(self):
+        text = self.text_edit.toPlainText()
 
         conky_dir = os.path.join(os.path.expanduser("~"), ".config", "conky")
         os.makedirs(conky_dir, exist_ok=True)
@@ -287,7 +398,6 @@ class ConkyEditor(Gtk.Window):
             os.path.join(conky_dir, "conky.lua"),
             os.path.join(conky_dir, "conky.conf"),
         ]
-        # Si el archivo de origen está fuera de esa carpeta, también lo escribimos
         if self.file_path and self.file_path not in targets:
             targets.insert(0, self.file_path)
 
@@ -297,212 +407,178 @@ class ConkyEditor(Gtk.Window):
                 os.makedirs(os.path.dirname(path), exist_ok=True)
                 with open(path, "w", encoding="utf-8") as f:
                     f.write(text)
-            except Exception as e:  # pylint: disable=broad-except
+            except Exception as e:
                 errors.append(f"{os.path.basename(path)}: {e}")
 
         if errors:
-            self._show_msg(
-                f"{t('save_error', 'Error al guardar')}:\n" + "\n".join(errors),
-                Gtk.MessageType.ERROR)
-        else:
-            self._show_msg(t('file_saved', 'Archivo guardado correctamente.'),
-                           Gtk.MessageType.INFO)
-            os.system("killall -SIGUSR1 conky 2>/dev/null")
+            self._show_msg(f"{t('save_error', 'Error al guardar')}:\n" + "\n".join(errors), QMessageBox.Critical)
+            return
 
-    # ─────────────────────────────────────────────
-    # WORD WRAP
-    # ─────────────────────────────────────────────
-    def _on_wrap_toggled(self, btn):
-        mode = Gtk.WrapMode.WORD_CHAR if btn.get_active() else Gtk.WrapMode.NONE
-        self.text_view.set_wrap_mode(mode)
+        self._mark_clean()
+        self._show_msg(t("file_saved", "Archivo guardado correctamente."), QMessageBox.Information)
+        os.system("killall -SIGUSR1 conky 2>/dev/null")
 
-    # ─────────────────────────────────────────────
-    # BUSCAR / REEMPLAZAR
-    # ─────────────────────────────────────────────
-    def _on_find_toggled(self, btn):
-        if btn.get_active():
-            self.find_bar.show_all()
-            self.entry_find.grab_focus()
+    # -- Estado del documento --
+
+    def _on_text_changed(self):
+        self._dirty = True
+        self._update_title()
+        self._update_status()
+
+    def _mark_clean(self):
+        self._dirty = False
+        self._update_title()
+
+    def _update_title(self):
+        fname = os.path.basename(self.file_path) if self.file_path else t("file_not_found", "Archivo no encontrado")
+        mark = "* " if self._dirty else ""
+        self.setWindowTitle(f"{mark}{t('manual_editor', 'Editor Lua')} - {fname}")
+
+    def closeEvent(self, event):
+        if self._dirty and not self._confirm(
+                t("unsaved_confirm", "Hay cambios sin guardar. Salir de todos modos?")):
+            event.ignore()
+            return
+        event.accept()
+
+    def _confirm(self, message):
+        box = QMessageBox(self)
+        box.setWindowTitle(t("editor_conkyman", "Editor ConkyMan"))
+        box.setText(message)
+        box.setIcon(QMessageBox.Question)
+        box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        return box.exec() == QMessageBox.Yes
+
+    # -- Ajuste de linea --
+
+    def _on_wrap_toggled(self, checked):
+        mode = QPlainTextEdit.WidgetWidth if checked else QPlainTextEdit.NoWrap
+        self.text_edit.setLineWrapMode(mode)
+
+    # -- Buscar y reemplazar --
+
+    def _toggle_find_bar(self):
+        self.btn_find.setChecked(not self.btn_find.isChecked())
+
+    def _on_find_toggled(self, checked):
+        self.find_bar.setVisible(checked)
+        if checked:
+            self.entry_find.setFocus()
+            self.entry_find.selectAll()
         else:
-            self._hide_find_bar()
+            self._clear_highlights()
 
     def _hide_find_bar(self):
-        self.find_bar.hide()
-        self.tbtn_find.set_active(False)
-        self._clear_highlights()
-        self.text_view.grab_focus()
-
-    def _on_key_press(self, _widget, event):
-        # Ctrl+F → abrir buscar
-        if (event.state & Gdk.ModifierType.CONTROL_MASK and
-                event.keyval == Gdk.KEY_f):
-            self.tbtn_find.set_active(True)
-            return True
-        # Ctrl+S → guardar
-        if (event.state & Gdk.ModifierType.CONTROL_MASK and
-                event.keyval == Gdk.KEY_s):
-            self._on_save(None)
-            return True
-        # Escape → cerrar buscar si está abierto
-        if event.keyval == Gdk.KEY_Escape and self.tbtn_find.get_active():
-            self._hide_find_bar()
-            return True
-        return False
-
-    def _on_search_changed(self, _entry):
-        self._highlight_all()
-
-    def _on_find_next(self, _entry):
-        self._find_next()
-
-    def _get_search_text(self):
-        return self.entry_find.get_text()
+        if self.btn_find.isChecked():
+            self.btn_find.setChecked(False)
+        self.text_edit.setFocus()
 
     def _highlight_all(self):
-        """Marca todas las ocurrencias en amarillo."""
-        buf = self.text_view.get_buffer()
-        start, end = buf.get_bounds()
-        buf.remove_tag(self._tag_found,   start, end)
-        buf.remove_tag(self._tag_current, start, end)
+        doc = self.text_edit.document()
+        needle = self.entry_find.text()
 
-        needle = self._get_search_text()
+        extra = []
         if not needle:
-            self.lbl_find_status.set_text("")
+            self.lbl_find_status.setText("")
+            self.text_edit.setExtraSelections([])
+            self.text_edit.highlight_current_line()
             return
 
-        count = 0
-        itr = buf.get_start_iter()
-        while True:
-            match = itr.forward_search(needle, Gtk.TextSearchFlags.CASE_INSENSITIVE, None)
-            if not match:
-                break
-            m_start, m_end = match
-            buf.apply_tag(self._tag_found, m_start, m_end)
-            count += 1
-            itr = m_end
+        fmt = QTextCharFormat()
+        fmt.setBackground(QColor("#5c5c1e"))
 
+        cursor = QTextCursor(doc)
+        count = 0
+        while True:
+            cursor = doc.find(needle, cursor)
+            if cursor.isNull():
+                break
+            sel = QTextEdit.ExtraSelection()
+            sel.format = fmt
+            sel.cursor = cursor
+            extra.append(sel)
+            count += 1
+
+        self.text_edit.setExtraSelections(extra)
         if count == 0:
-            self.lbl_find_status.set_markup(
-                f"<span foreground='red'>{t('not_found', 'No encontrado')}</span>")
+            self.lbl_find_status.setText(t("not_found", "No encontrado"))
         else:
-            self.lbl_find_status.set_text(f"{count} ↓")
+            self.lbl_find_status.setText(f"{count} ↓")
 
     def _find_next(self):
-        """Avanza a la siguiente ocurrencia y la resalta en naranja."""
-        buf    = self.text_view.get_buffer()
-        needle = self._get_search_text()
+        needle = self.entry_find.text()
         if not needle:
             return
-
-        # Empieza desde la posición actual del cursor
-        cursor = buf.get_iter_at_mark(buf.get_insert())
-        match  = cursor.forward_search(needle, Gtk.TextSearchFlags.CASE_INSENSITIVE, None)
-
-        # Si no hay más hacia adelante, vuelve al inicio (wrap-around)
-        if not match:
-            cursor = buf.get_start_iter()
-            match  = cursor.forward_search(needle, Gtk.TextSearchFlags.CASE_INSENSITIVE, None)
-
-        if match:
-            m_start, m_end = match
-            # Quitar resaltado naranja anterior
-            s, e = buf.get_bounds()
-            buf.remove_tag(self._tag_current, s, e)
-            buf.apply_tag(self._tag_current, m_start, m_end)
-            buf.place_cursor(m_start)
-            self.text_view.scroll_to_mark(buf.get_insert(), 0.1, True, 0.5, 0.5)
+        found = self.text_edit.find(needle)
+        if not found:
+            cursor = self.text_edit.textCursor()
+            cursor.movePosition(QTextCursor.Start)
+            self.text_edit.setTextCursor(cursor)
+            self.text_edit.find(needle)
 
     def _clear_highlights(self):
-        buf = self.text_view.get_buffer()
-        start, end = buf.get_bounds()
-        buf.remove_tag(self._tag_found,   start, end)
-        buf.remove_tag(self._tag_current, start, end)
-        self.lbl_find_status.set_text("")
+        self.text_edit.setExtraSelections([])
+        self.text_edit.highlight_current_line()
+        self.lbl_find_status.setText("")
 
-    def _on_replace_one(self, _btn):  # pylint: disable=unused-argument
-        buf     = self.text_view.get_buffer()
-        needle  = self._get_search_text()
-        replace = self.entry_replace.get_text()
+    def _on_replace_one(self):
+        needle = self.entry_find.text()
+        replace = self.entry_replace.text()
+        if not needle:
+            return
+        cursor = self.text_edit.textCursor()
+        if cursor.hasSelectedText() and cursor.selectedText() == needle:
+            cursor.insertText(replace)
+        self._find_next()
+
+    def _on_replace_all(self):
+        needle = self.entry_find.text()
+        replace = self.entry_replace.text()
         if not needle:
             return
 
-        cursor = buf.get_iter_at_mark(buf.get_insert())
-        match  = cursor.forward_search(needle, Gtk.TextSearchFlags.CASE_INSENSITIVE, None)
-        if not match:
-            cursor = buf.get_start_iter()
-            match  = cursor.forward_search(needle, Gtk.TextSearchFlags.CASE_INSENSITIVE, None)
-
-        if match:
-            m_start, m_end = match
-            buf.begin_user_action()
-            buf.delete(m_start, m_end)
-            buf.insert(m_start, replace)
-            buf.end_user_action()
-            self._highlight_all()
-
-    def _on_replace_all(self, _btn):  # pylint: disable=unused-argument
-        buf     = self.text_view.get_buffer()
-        needle  = self._get_search_text()
-        replace = self.entry_replace.get_text()
-        if not needle:
-            return
-
+        doc = self.text_edit.document()
+        cursor = QTextCursor(doc)
+        cursor.beginEditBlock()
         count = 0
-        buf.begin_user_action()
-        itr = buf.get_start_iter()
+        pos = QTextCursor(doc)
         while True:
-            match = itr.forward_search(needle, Gtk.TextSearchFlags.CASE_INSENSITIVE, None)
-            if not match:
+            pos = doc.find(needle, pos)
+            if pos.isNull():
                 break
-            m_start, m_end = match
-            buf.delete(m_start, m_end)
-            buf.insert(m_start, replace)
-            itr = buf.get_iter_at_offset(m_start.get_offset() + len(replace))
+            pos.insertText(replace)
             count += 1
-        buf.end_user_action()
+        cursor.endEditBlock()
 
         self._highlight_all()
-        replaced_label = t('replaced_n', 'reemplazos realizados')
-        self.lbl_find_status.set_text(f"{count} {replaced_label}")
+        self.lbl_find_status.setText(f"{count} {t('replaced_n', 'reemplazos realizados')}")
 
-    # ─────────────────────────────────────────────
-    # BARRA DE ESTADO
-    # ─────────────────────────────────────────────
-    def _on_cursor_moved(self, buf, _loc, mark):
-        if mark == buf.get_insert():
-            GLib.idle_add(self._update_statusbar)
+    # -- Barra de estado --
 
-    def _update_statusbar(self):
-        buf    = self.text_view.get_buffer()
-        cursor = buf.get_iter_at_mark(buf.get_insert())
-        line   = cursor.get_line() + 1
-        col    = cursor.get_line_offset() + 1
-        lines  = buf.get_line_count()
-        tpl    = t('line_col', 'Línea {line}, Col {col}  |  {lines} líneas')
-        self.statusbar.set_markup(
-            f"<small>{tpl.format(line=line, col=col, lines=lines)}</small>")
+    def _update_status(self):
+        cursor = self.text_edit.textCursor()
+        line = cursor.blockNumber() + 1
+        col = cursor.columnNumber() + 1
+        lines = self.text_edit.document().blockCount()
+        tpl = t("line_col", "Linea {line}, Col {col}  |  {lines} lineas")
+        self.lbl_status.setText(tpl.format(line=line, col=col, lines=lines))
 
-    # ─────────────────────────────────────────────
-    # MENSAJES
-    # ─────────────────────────────────────────────
-    def _show_msg(self, msg, msg_type):
-        dlg = Gtk.MessageDialog(
-            transient_for=self,
-            message_type=msg_type,
-            buttons=Gtk.ButtonsType.OK,
-            text=t('editor_conkyman', 'Editor ConkyMan'),
-        )
-        dlg.format_secondary_text(msg)
-        dlg.run()
-        dlg.destroy()
+    # -- Dialogos --
+
+    def _show_msg(self, msg, icon):
+        box = QMessageBox(self)
+        box.setWindowTitle(t("editor_conkyman", "Editor ConkyMan"))
+        box.setText(msg)
+        box.setIcon(icon)
+        box.exec()
 
 
-# ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     target = sys.argv[1] if len(sys.argv) > 1 else None
-    app = ConkyEditor(target)
-    app.connect("destroy", Gtk.main_quit)
-    app.show_all()
-    # La find_bar se oculta después del show_all
-    app.find_bar.hide()
-    Gtk.main()
+    app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+    app.setApplicationName(APP_NAME)
+    app.setDesktopFileName(APP_ID)
+    win = ConkyEditor(target)
+    win.show()
+    sys.exit(app.exec())
